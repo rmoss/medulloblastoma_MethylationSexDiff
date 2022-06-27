@@ -37,3 +37,7 @@ vignettes/*.pdf
 
 # macOS hidden file
 .DS_Store
+
+# data should not be synced
+data/processed
+data/raw
