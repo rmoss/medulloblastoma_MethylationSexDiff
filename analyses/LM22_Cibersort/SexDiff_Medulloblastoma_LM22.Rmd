@@ -1,0 +1,226 @@
+---
+title: "LM22 CibersortX Analysis of Medulloblastoma Expression Data"
+author: "Rachel Moss"
+date: "11/12/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Clean data before putting it in Cibersort
+
+Load required packages
+
+```{r LoadPackage, message=FALSE, warning=FALSE}
+library(affy)
+library(GEOquery)
+library(readr)
+library(EnsDb.Hsapiens.v79)
+library(dplyr)
+library(tibble)
+library(ggplot2)
+library(tidyverse)
+library(ggpubr)
+library(rstatix)
+library(openxlsx)
+```
+
+Read in the processed expression data from the gse series matrix file and use exprs() to get the table of expression data with ensemble gene ID as rows and sample names as columns.
+
+```{r readdata}
+# # expression set object from Natali
+# rmaCountData <- readRDS("./data/rmaCountData.rds")
+# # pull out the expression table
+# exprMat <- exprs(rmaCountData)
+gse <- getGEO(filename="./data/GSE85217_series_matrix.txt")
+exprMatGSE <- exprs(gse)
+exprMatGSE[1:10,1:5]
+
+#diffExprMB <- read_delim("data/diffExp_M-F_medullo.txt", "\t", escape_double = FALSE, trim_ws = TRUE)
+```
+Need to convert the ensembl ID in the expression matrix to the gene name for CIBERSORT.  Start by removing "_at" from each ensembl ID.  Then use ensembledb EnsDb.Hsapiens.v79 to match each of the ensembl GENEIDs to the gene names
+```{r convert}
+rownames(exprMatGSE) <- substr(rownames(exprMatGSE),1,nchar(rownames(exprMatGSE))-3)
+
+ensembl.genes <- rownames(exprMatGSE)
+geneIDs1 <- ensembldb::select(EnsDb.Hsapiens.v79, keys= ensembl.genes, keytype = "GENEID", columns = c("SYMBOL","GENEID"))
+exprMatGSE <- as.data.frame(exprMatGSE)
+exprMatGSE <- rownames_to_column(exprMatGSE,"GENEID")
+gene_Expr <- left_join(exprMatGSE, geneIDs1)
+gene_Expr <- filter(gene_Expr, !is.na(gene_Expr$SYMBOL))
+gene_Expr <- gene_Expr[,c(1,765,2:764)]
+names(gene_Expr)[2] <- "Genes"
+gene_Expr[1:5,1:5]
+```
+
+Write the tables to a tab-delimited text file
+```{r write}
+# write.table(gene_Expr[,2:765], file="./MBexpr_GeneName_GSE85217.txt", quote=F, sep="\t", col.names = T, row.names = F)
+# 
+# write.table(gene_Expr[,2:383], file="./MBexpr_GeneName_GSE85217_1.txt", quote=F, sep="\t", col.names = T, row.names = F)
+# 
+# write.table(gene_Expr[,c(2,384:765)], file="./MBexpr_GeneName_GSE85217_2.txt", quote=F, sep="\t", col.names = T, row.names = F)
+
+```
+
+## Ok so now I ran this in CIBERSORTX (https://cibersortx.stanford.edu/)
+
+I need to match the samples to their phenotypic data to compare the cell type composition between male and female. First, I'll read in the phenotype data, match it to the sample names from the pData, and filter for only those where predictedSex matched provided gender
+```{r, pheno}
+pheno <- read_delim("data/CavalliPheno.txt", "\t", escape_double = FALSE, trim_ws = TRUE)
+pheno <- pheno[,1:12]
+head(pheno)
+samplenames <- pData(gse)[,1:2]
+pheno <- left_join(pheno, samplenames, by=c("Study_ID"="title"))
+pheno <- filter(pheno, Discordant==0)
+pheno[1:5,1:13]
+
+
+```
+
+Read in cibersort results file and left_join to pheno file
+```{r, cibersort}
+CIBERSORTx_MB1 <- read_delim("cibersort/CIBERSORTx_Cavalli_MB1_Adjusted.txt", 
+    "\t", escape_double = FALSE, trim_ws = TRUE)
+CIBERSORTx_MB2 <- read_delim("cibersort/CIBERSORTx_Cavalli_MB2_Adjusted.txt", 
+    "\t", escape_double = FALSE, trim_ws = TRUE)
+CIBERSORTx_MB <- rbind(CIBERSORTx_MB1, CIBERSORTx_MB2)
+
+celltypes_begin <- left_join(pheno, CIBERSORTx_MB, by=c("geo_accession"="Mixture"))
+celltypes <- celltypes_begin[,c(1,14:35)]
+
+# celltypes_MB1 <- celltypes_MB1[1:357,]
+# celltypes_MB1 <- celltypes_MB1[,c(1,14:35)]
+head(celltypes)
+
+celltypes_Long <- pivot_longer(celltypes, -c(Study_ID), names_to="cellType", values_to="score")
+
+celltypes_Long_Pheno <- celltypes_Long %>%
+  left_join(select(pheno, Study_ID, predictedSex, Subgroup, Subtype))
+```
+Calculate tables for significance
+```{r, echo=FALSE}
+wilcox_sexDiff_subgroup <- compare_means(score~predictedSex, data=celltypes_Long_Pheno, group.by=c("Subgroup","cellType"))
+
+wilcox_sexDiff_all <- compare_means(score~predictedSex, data=celltypes_Long_Pheno, group.by=c("cellType"))
+
+wilcox_SubgroupCellTypes <- compare_means(score~Subgroup, data=celltypes_Long_Pheno, group.by=c("cellType"))
+
+# list_of_datasets <- list("LM22_SexDiffOverall" = wilcox_sexDiff_all, 
+#                          "LM22_SexDiffbySubgroup" = wilcox_sexDiff_subgroup, 
+#                          "LM22_SubgroupCelltypes" = wilcox_SubgroupCellTypes)
+# write.xlsx(list_of_datasets, file = "./stats/wilcoxstats_LM22.xlsx")
+
+# t_test_sexDiff_subgroup <- compare_means(score~predictedSex, data=celltypes_Long_Pheno, group.by=c("Subgroup","cellType"), method="t.test")
+# 
+stat.test.all <- celltypes_Long_Pheno %>%
+  group_by(cellType) %>%
+  wilcox_test(score ~ predictedSex) %>%
+  #adjust_pvalue() %>%
+  add_significance() #%>%
+  #filter(p.adj.signif != "ns")
+
+stat.test.all <- stat.test.all %>%
+  add_xy_position(x = "cellType", dodge = 0.8)
+
+
+
+```
+Plot boxplot of  the absolute gene signature scores by cell type comparing Female vs male
+
+```{r fig1, echo=FALSE}
+
+
+#compare_means(score~predictedSex, data=celltypes_Long_Pheno)
+
+p1 <- ggplot(celltypes_Long_Pheno, aes(x=factor(cellType), y=score, fill=predictedSex)) + 
+  geom_boxplot() +
+  geom_signif(comparisons = c("Female","Male"), map_signif_level=TRUE)
+  #ylim(0,0.4)
+#p1 + theme(axis.text.x = element_text(angle = 90)) + stat_compare_means(label="p.signif", hide.ns=T)
+p1 + stat_compare_means(label="p.signif", hide.ns=T) + theme_bw() + scale_fill_manual(values=c("red", "black")) + theme(axis.title.x=element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.2, hjust = 0.95)) + labs(y="Absolute score")
+#ggsave("./figures/LM22_CavalliExpression_SexDiffBoxplot_Figure_v2.png")
+
+p1 + theme_bw() + scale_fill_manual(values=c("red", "black")) + theme(axis.title.x=element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.2, hjust = 0.95)) + labs(y="Absolute score") 
+
+p2 <- ggplot(celltypes_Long_Pheno, aes(x=factor(cellType), y=score, fill=predictedSex)) + 
+  geom_boxplot() +
+  ylim(0,0.4)
+p2 + theme(axis.text.x = element_text(angle = 90)) + stat_compare_means(aes(group=Subgroup), label="p.signif", hide.ns=F)
+#ggsave("./figures/LM22_CavalliExpression_SexDiffBoxplot_Figure_altsig.png")
+
+```
+
+```{r fig3, echo=FALSE}
+ggplot(celltypes_Long_Pheno, aes(x=score, fill=predictedSex)) +
+  geom_histogram(binwidth=0.001) +
+  facet_wrap(~cellType, scale="free") +
+  theme(strip.text = element_text(size = 5))
+```
+
+Now plot the same but for each by subgroup.
+```{r fig2, fig.height=12, fig.width=9.8, echo=FALSE}
+p <- ggplot(celltypes_Long_Pheno, aes(x=factor(cellType), y=score, fill=predictedSex)) + 
+  geom_boxplot() +
+  #facet_wrap(~Subgroup, scale="free", ncol=1)
+  facet_wrap(~Subgroup, scales="free_y", ncol=1) +
+  labs(y="Absolute score")
+
+p + theme_bw() + scale_fill_manual(values=c("red", "black")) + theme(axis.title.x=element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.2, hjust = 0.95))  + stat_compare_means(label="p.signif", hide.ns=T)
+#ggsave("./figures/LM22_CavalliExpression_SexDiffBySubgroup_Figure.png")
+```
+
+Boxplots comparing all subgroups per cell type
+```{r fig4, fig.width=10, echo=FALSE}
+#ylim1 = boxplot.stats(celltypes_Long_Pheno$score)$stats[c(1, 5)]
+#+coord_cartesian(ylim = ylim1*4)
+p1 <- ggplot(celltypes_Long_Pheno, aes(x=factor(cellType), y=score, fill=Subgroup)) + 
+  geom_boxplot() +
+  #ylim(0,0.4)
+  labs(y="Absolute score")
+  
+p1 + theme_bw() + theme(axis.title.x=element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.2, hjust = 0.95)) + stat_compare_means(label="p.signif", hide.ns=F) 
+#ggsave("./figures/LM22_CavalliExpression_SubgroupBoxplotbyCellType_Figure_v1.png")
+
+p2 <- ggplot(celltypes_Long_Pheno, aes(x=cellType, y=score, fill=Subgroup)) + 
+  geom_boxplot() +
+  ylim(0,0.4) +
+  labs(y="Absolute score")
+p2 + theme_bw() + theme(axis.title.x=element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.2, hjust = 0.95)) + stat_compare_means(aes(group=Subgroup), label="p.signif", hide.ns=F) 
+#ggsave("./figures/LM22_CavalliExpression_SubgroupBoxplotbyCellType_Figure_v2.png")
+```
+
+Use facet_wrap to split out the cell types to better see differences between subgroups
+```{r fig5, fig.width=12, echo=FALSE}
+# types <- celltypes_Long_Pheno$cellType[]
+
+my_comparisons <- list( c("Group3", "Group4"), c("Group3", "SHH"), c("Group3", "WNT"),  c("Group4", "SHH"), c("Group4", "WNT"), c("SHH", "WNT"))
+
+p <- ggplot(filter(celltypes_Long_Pheno, cellType=="B cells naive"), aes(x=Subgroup, y=score, fill=Subgroup)) + 
+  geom_boxplot()
+p + theme(axis.text.x = element_text(angle = 90)) + stat_compare_means(comparisons = my_comparisons, method="t.test") # Add pairwise comparisons p-value
+    # Add global p-value
+
+p <- ggplot(celltypes_Long_Pheno, aes(x=factor(cellType), y=score, fill=Subgroup)) + 
+  geom_boxplot() +
+  facet_wrap(~cellType, scale="free")
+    
+p + stat_compare_means(label = "p.signif", label.x = 1.5) 
+
+```
+
+```{r fig6, fig.width=12, echo=FALSE}
+# Box plot facetted by "dose"
+p <- ggboxplot(celltypes_Long_Pheno, x = "Subgroup", y = "score",
+          color = "Subgroup", palette = "jco",
+          facet.by = "cellType", short.panel.labs = FALSE) +
+          stat_compare_means(label = "p.format")
+
+ggpar(p, ylim=c(0, 0.4))
+# Use only p.format as label. Remove method name.
+# p + stat_compare_means(label = "p.format")
+
+```
+

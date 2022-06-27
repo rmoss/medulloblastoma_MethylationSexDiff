@@ -1,0 +1,405 @@
+---
+title: "MB_SexDiff_Newcastle"
+author: "Rachel Moss"
+date: "2/23/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+require("knitr")
+knitr::opts_chunk$set(echo = TRUE)
+opts_knit$set(root.dir = "/Volumes/GoogleDrive/My Drive/Research/SexDiffMedullo/Analysis_RMM_new")
+```
+
+Load libraries
+```{r load} 
+library(minfi)
+library(GEOquery)
+library(dplyr)
+library(shinyMethyl)
+
+```
+
+# Data 
+
+Download files from GEO 
+```{r data}
+#increase file download timeout
+options(timeout = 600)
+
+#download GEO object
+# gse <- getGEO("GSE93646", GSEMatrix = TRUE)
+# #get phenotype data - sample sheet
+# pd = pData(gse[[1]])
+# pd <- pd[,c("geo_accession","description","supplementary_file","supplementary_file.1","age (yrs):ch1","disease state:ch1","gender:ch1","pathology:ch1","sample type:ch1")]
+# pd$sampleName <- sub(".*suppl/","",pd$supplementary_file)
+# pd$sampleName <- sub("_Grn.idat.gz","",pd$sampleName)
+# rownames(pd) <- pd$sampleName
+# pd <- as(pd,"DataFrame")
+# 
+# #get raw data - idats, processed beta matrix, etc.
+# getGEOSuppFiles("GSE93646")
+# #decompress idats
+# untar("GSE93646/GSE93646_RAW.tar", exdir = "GSE93646/idat")
+# #list files
+# head(list.files("GSE93646/idat", pattern = "idat"))
+# idatFiles <- list.files("GSE93646/idat", pattern = "idat.gz$", full = TRUE)
+# #decompress individual idat files
+# sapply(idatFiles[850:859], gunzip, overwrite = TRUE)
+# #read idats and create RGSet
+# RGSet <- read.metharray.exp("GSE93646/idat", verbose=T)
+# pData(RGSet) <- pd
+# 
+# saveRDS(RGSet, "RGSet_GSE93646.RDS")
+```
+
+Load RDS object
+```{r loaddata}
+RGSet <- readRDS("RGSet_GSE93646.RDS")
+pD.all <- pData(RGSet)
+head(pD.all)
+pD <- pD.all[, c("sampleName", "geo_accession", "description", "age (yrs):ch1","disease state:ch1","gender:ch1","pathology:ch1","sample type:ch1")]
+colnames(pD) <- c("sampleName", "geo_accession", "description", "age_(yrs)","disease state","gender","pathology","sampleType")
+head(pD)
+
+```
+
+QC Methylation data
+```{r QC}
+## Function that takes a project name, MSet, and RGSet and creates various QC Plots and a pdf QC Report
+# minfiQC <- function(proj, MSet, RGSet) {
+#   groups = pData(RGSet)$Sample_Group
+#   print(length(groups))
+#   names = pData(RGSet)$Sample_Name
+#   print(length(names))
+#   
+#   # QC Plot
+#   qc <- getQC(MSet)
+#   plotQC(qc)
+#   
+#   densityPlot(MSet, sampGroups = groups)
+#   densityBeanPlot(MSet, sampGroups = groups)
+#   
+#   # Control probes plot
+#   controlStripPlot(RGSet, controls="BISULFITE CONVERSION II")
+#   
+#   # Quality Control Report
+#   reportName = paste("qcReport_",proj,".pdf",sep="")
+#   qcReport(RGSet, sampNames = names,sampGroups = groups, pdf = reportName)
+# }
+# Access phenotypic data from the RGChannelSet object with pData() function
+phenoData <- as.data.frame(pData(RGSet))
+
+# Access manifest object in the RGChannelSet object using getManifest() - contains probe design info
+manifest <- getManifest(RGSet)
+manifest
+
+# View probe info of manifest object using getProbeInfo()
+head(getProbeInfo(manifest))
+
+# MethylSet object created using preprocessRaw() - has only methylated and unmeth signals.  Use getMeth() and getUnmeth() topull out matching intensities matrices
+MSet <- preprocessRaw(RGSet) 
+MSet
+head(getMeth(MSet)[,1:3])
+head(getUnmeth(MSet)[,1:3])
+
+## Run minfiQC function to produce QC plots and reports
+#proj = "MBSexDiff"
+
+qc <- getQC(MSet)
+png(file="./Results_Newcastle/MBMeth_Newcastle_plotQC.png")
+plotQC(qc)
+dev.off()
+MSet <- addQC(MSet, qc)
+
+
+#densityPlot(MSet, sampGroups = phenoData$gender.ch1)
+
+#qcReport(RGSet, pdf="qcReport_MBNewcastle.pdf")
+# minfiQC(proj, MSet, RGSet)
+# out <- minfiQC(MSet)
+
+#summary <- shinySummarize(RGSet)
+
+# runShinyMethyl(summary)
+```
+
+
+Remove 21 bad samples based on plotQC with cutoff of 10.5 from the RGSet:
+"GSM2459500_9421912022_R01C02"
+"GSM2459516_9647455134_R01C01"
+"GSM2459520_7970368013_R03C02"
+"GSM2459522_7970376040_R01C02"
+"GSM2459605_9647455136_R04C01"
+"GSM2459611_9647455169_R03C01"
+"GSM2459614_9421912041_R01C01" 
+"GSM2459625_9422493120_R06C02"
+"GSM2459630_9422493121_R01C02" 
+"GSM2459648_6229017107_R05C01"
+"GSM2459649_9422493120_R04C01" 
+"GSM2459653_9422493120_R06C01"
+"GSM2459654_9422493121_R04C02" 
+"GSM2459658_9421912016_R05C02"
+"GSM2459664_9421912016_R04C02" 
+"GSM2459696_7970368138_R06C02"
+"GSM2459737_9421912024_R03C01" 
+"GSM2459830_9647455150_R05C02"
+"GSM2459835_9647455143_R04C01" 
+"GSM2459841_9647455149_R04C01"
+"GSM2459845_9761749106_R01C01"
+```{r preprocess}
+badSampleCutoff <- 10.5
+meds <- (qc$mMed + qc$uMed)/2
+whichGood <- which((meds >= badSampleCutoff))
+
+RGSet_filt <- RGSet[,whichGood]
+phenoData <- pData(RGSet_filt)
+saveRDS(RGSet_filt, "RGSet_GSE93646_filt.RDS")
+```
+
+Run detP function on RGSet & normalize using preprocessFunnorm
+```{r norm}
+gc()
+detP <- detectionP(RGSet_filt)
+GRSet <- preprocessFunnorm(RGSet_filt)
+saveRDS(GRSet, "GRSet_GSE93646.RDS")
+```
+
+
+Check predicted sex and remove samples that that don't match reported sex     
+```
+predictedSex <- getSex(GRset, cutoff = -2)$predictedSex
+head(predictedSex)
+plotSex(getSex(GRset, cutoff = -2))
+GRSet <- addSex(GRSet) ### adding predictedSex to GRSet
+phenoData <- as.data.frame(pData(GRSet))
+keep <- filter(phenoData, if(gender ==))
+
+```
+
+
+### Doing Analysis WITHOUT sex chromosomes
+
+#### Removing Sex chromosomes
+
+```{r}
+### getting annotation data
+ann450k <- getAnnotation(IlluminaHumanMethylation450kanno.ilmn12.hg19) 
+```
+```{r}
+### getting rid of any feature names in GRSet that match any samples in annotation data with sex chromosomes
+keep <- !(featureNames(GRSet_Group3) %in% ann450k$Name[ann450k$chr %in% 
+                                                        c("chrX","chrY")])
+```
+
+```{r}
+### creating new GRSet without sex chromosomes
+GRSet_Group32 <- GRSet_Group3[keep, ]
+```
+
+```{r}
+### getting Beta values out of new GRSet w/o sex chromosomes
+beta_Group32 <- getBeta(GRSet_Group32)
+```
+
+```{r}
+sex <- GRSet_Group32$predictedSex ### making predictedSex an object
+dmp_Group32 <- dmpFinder(beta_Group32, pheno = sex, type = "categorical") ### finding DMP's between sex
+```
+
+
+```{r}
+dmpSig_Group32 <- dmp_Group32[as.numeric(as.character(dmp_Group32$qval))<0.05,] ### only including significant DMP's (qval < 0.5)
+sigBeta_Group32 <- beta_Group32[rownames(dmpSig_Group32), ] ### only including significant beta values of significant DMP's 
+sigBeta_Group32 <- as.data.frame(sigBeta_Group32) ### to make a "probeID" column (helpful in the future), changing our beta value matrix into a dataframe
+sigBeta_Group32 <- rownames_to_column(sigBeta_Group32, var = "probeID")
+```
+```{r}
+### counting to see how many significant DMP's in group 3 (# rows)
+dim(dmpSig_Group32)
+```
+
+112 DMP's
+
+#### Finding Delta Beta Values (Males minus Females): 
+
+```{r}
+betaLong2 <- pivot_longer(sigBeta_Group32, -probeID, names_to = "sampleID", values_to = "betaVal") ###
+pheno2 <- as.data.frame(pData(GRSet_Group32)) ### creating pheno data from Group 3 GRset
+pheno2 <- rownames_to_column(pheno2, var = "sampleID")
+betaLong2 <- left_join(betaLong2, pheno2) ### joining pData to beta Data by "sampleID"
+betaLong2 <- separate(betaLong2, "sampleID", "GSMid", sep = "_", remove = F) ### "sampleID" has messy characters that need to be removed
+```
+
+
+```{r}
+### creating a table (called "summary") showing the average beta value for males and females on each probe
+summary <- betaLong2 %>% 
+  group_by(probeID, predictedSex) %>%   
+  summarize(avgBeta = mean(betaVal))
+```
+
+```{r}
+### converting the summary table to a wider format
+summaryWide <- pivot_wider(summary[,c("probeID","predictedSex","avgBeta")], names_from = predictedSex, values_from = avgBeta)
+diffValueG32 <- summaryWide
+diffValueG32$diff <- summaryWide$`M`-summaryWide$`F` ### calculating delta beta values M-F
+head(diffValueG32)
+```
+
+
+```{r}
+### finding average negative beta values (more methylated in Females)
+neg_diff_G32 <- diffValueG32 %>%
+  filter(diff < 0)
+
+nrow(neg_diff_G32)
+```
+
+```{r}
+### finding average positive beta values (more methylated in males)
+pos_diff_G32 <- diffValueG32 %>%
+  filter(diff > 0)
+
+nrow(pos_diff_G32)
+```
+
+69 DMP's with a negative beta value, 43 DMP's with a positive beta values
+
+### Making Heatmaps
+
+```{r}
+sex <- as.data.frame(sex)
+col_fun = list(sex = c("M" = "black", "F"="grey"))
+
+colAnn_G32 <- HeatmapAnnotation(df = sex, 
+                            which = "col",
+                            col = col_fun,
+                            annotation_height = 0.6,
+                            annotation_width = unit(1, 'cm'),
+                            show_legend = FALSE,
+                            gap = unit(1, 'mm'))
+```
+
+```{r}
+### first using annotation data to make dataset with chromosome info 
+ann450k <- getAnnotation(IlluminaHumanMethylation450kanno.ilmn12.hg19)
+ann450k_df <- as.data.frame(ann450k)
+ann450kG3 <- filter(ann450k_df, Name %in% sigBeta_Group32$probeID)
+chr2 <- ann450kG3$chr
+```
+
+```{r}
+armytage_test2 <- list(chr2 = armytage)
+chr2 <- as.data.frame(chr2)
+rowAnn_G32 <- HeatmapAnnotation(df = chr2, 
+                                 which = "row",
+                                col = armytage_test2,
+                                annotation_width = unit(1.5, "cm"),
+                                   show_legend = FALSE,
+                                show_annotation_name = FALSE)
+```
+
+```{r}
+### heatmap doesn't like beta values in data frame. So you have to rerun these two steps to get it back into the proper format. 
+dmpSig_Group32 <- dmp_Group32[as.numeric(as.character(dmp_Group32$qval))<0.05,]
+sigBeta_Group32 <- beta_Group32[rownames(dmpSig_Group32), ]
+```
+
+
+```{r}
+sigBeta_matrixGroup32 <- as.matrix(sigBeta_Group32)
+
+Heatmap(sigBeta_matrixGroup32, 
+        name = "Group 3 w/o chr",
+        cluster_rows = TRUE,
+        show_row_dend = TRUE, 
+        row_title = "DMP's (q-value < 0.05)",
+        row_title_side = 'left',
+        row_title_gp = gpar(fontsize = 12,  fontface = 'bold'),
+        row_title_rot = 90,
+        show_row_names = FALSE,
+        row_dend_width = unit(25,'mm'),
+        cluster_columns = TRUE,
+        show_column_dend = TRUE,
+        column_title = '',
+        column_title_side = 'bottom',
+        column_title_gp = gpar(fontsize = 12, fontface
+                                               ='bold'),
+        column_title_rot = 0,
+        show_column_names = FALSE,
+        show_heatmap_legend = FALSE,
+        top_annotation = colAnn_G32,
+        left_annotation = rowAnn_G32
+       )
+
+```
+
+
+### Map DMP's to Genes
+
+```{r}
+write.csv(dmpSig_Group32, file = "/Users/natalisorajja/Documents/UMNCompBio/dmpSig_G3predictedSex.csv")
+```
+
+```{r}
+ann450kG3 <- rownames_to_column(ann450kG3, var = "probeID")
+```
+
+```{r}
+ann450kG3$start <- ann450kG3$pos - 1
+```
+
+```{r}
+ann450kG3 <- ann450kG3 %>% select(chr, start, pos, probeID)
+```
+
+```{r}
+head(ann450kG3)
+```
+
+```{r}
+#write_tsv(ann450kG3, path = "/Users/natalisorajja/Documents/ann450kG3predSex.bed", col_names = F)
+```
+
+
+
+#### Creating Full Results table (with probeID, gene name, p-value, delta beta):
+
+The following code is used to combine results into a table containing probeID, gene name, p-value, and delta beta. 
+
+```{r}
+dmpSig_Group32 <- dmpSig_Group32 %>%
+  rownames_to_column(var = "probeID")
+```
+
+```{r}
+full_G3predSex <- full_join(dmpSig_Group32, diffValueG32, by = "probeID")
+```
+
+```{r}
+ann450kG32 <- filter(ann450k_df, Name %in% full_G3predSex$probeID)
+```
+
+```{r}
+ann450kG32 <- ann450kG32 %>%
+  rownames_to_column(var = "probeID")
+```
+
+```{r}
+gene_probeID <- ann450kG32 %>%
+  dplyr::select(probeID, UCSC_RefGene_Name)
+```
+
+```{r}
+full_G3predSex <- full_G3predSex %>%
+  left_join(dplyr::select(gene_probeID, probeID, UCSC_RefGene_Name), by = "probeID")
+```
+```{r}
+full_G3predSex <- full_G3predSex %>%
+  filter(!UCSC_RefGene_Name == "")
+```
+
+```{r}
+#write_csv(full_G3predSex, "/Users/natalisorajja/Documents/UMNCompBio/G3MethFullResults.csv")
+```

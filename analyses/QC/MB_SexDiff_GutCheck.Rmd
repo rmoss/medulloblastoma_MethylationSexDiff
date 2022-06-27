@@ -1,0 +1,64 @@
+---
+title: "MB_SexDiff_GutCheck"
+author: "Rachel Moss"
+date: "1/8/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load required packages
+```{r LoadPackage, message=FALSE, warning=FALSE}
+## Data: /home/ljmills/public/GSE85212_RAW
+## srun --nodes=1 --ntasks-per-node=4 --mem=40g  --time=3:00:00  -p ccgg --pty bash -i
+library(minfi)
+library(minfiData)
+library(readr)
+# # library(affy)
+# library(GEOquery)
+# # library(readr)
+# # library(EnsDb.Hsapiens.v79)
+library(dplyr)
+#library(tidyr)
+library(tibble)
+# library(ggplot2)
+# # library(tidyverse)
+# # library(ggpubr)
+# library(rstatix)
+```
+
+Read in filtered GRset - sex given versus predicted sex discordant samples removed, normalization completed (preprocessFunnorm()), and low quality, cross-reactive, snp containing, and sex chromosome probes removed. Additionally read in the combined pheno file.
+```{r readdata}
+# GRset.flt <- readRDS("./data/GRset.flt.rds")
+beta <- read_csv("./data/betaALL121.csv")
+beta <- column_to_rownames(beta, var="X1")
+
+pheno <- read_csv("./data/pheno_combined.csv")
+
+
+```
+Match the order of the beta data to that of the pheno file and then run dmpFinder to find differentially methylated probes between SHH and Group 4 
+```{r diffmeth}
+# pheno_SHHGrp4 <- filter(pheno, pheno$Subgroup=="SHH" | pheno$Subgroup=="Group4")
+# beta_SHHGrp4 <- beta[,pheno_SHHGrp4$geo_accession_Meth]
+# beta_SHHGrp4_matched <- beta_SHHGrp4[,match(pheno_SHHGrp4$geo_accession_Meth,colnames(beta_SHHGrp4))]
+# 
+# write.csv(beta_SHHGrp4_matched, "./data/beta_SHHGrp4.csv")
+# write.csv(pheno_SHHGrp4, "./data/pheno_SHHGrp4.csv")
+
+beta_SHHGrp4_matched <- read_csv("./data/beta_SHHGrp4.csv")
+pheno_SHHGrp4 <- read_csv("./data/pheno_SHHGrp4.csv")
+
+dmp_SHHGrp4 <- dmpFinder(as.matrix(beta_SHHGrp4_matched), pheno = pheno_SHHGrp4$Subgroup, type = "categorical")
+head(dmp_SHHGrp4)
+write_csv(dmp_SHHGrp4, "./tables"
+
+```
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

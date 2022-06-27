@@ -1,0 +1,203 @@
+---
+title: "MB_SexDiff_glm"
+author: "Rachel Moss"
+date: "1/22/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load required packages
+```{r LoadPackage, message=FALSE, warning=FALSE}
+## Data: /home/ljmills/public/GSE85212_RAW
+## srun --nodes=1 --ntasks-per-node=4 --mem=40g  --time=3:00:00  -p ccgg --pty bash -i
+library(minfi)
+library(minfiData)
+library(readr)
+library(dplyr)
+library(tibble)
+library(survival)
+library(mlbench)
+library(caret)
+library(boot)
+library(glmnet)
+library(doMC)
+library(VennDiagram)
+library(RColorBrewer)
+library(ggvenn)
+```
+
+Read in filtered GRset - sex given versus predicted sex discordant samples removed, normalization completed (preprocessFunnorm()), and low quality, cross-reactive, snp containing, and sex chromosome probes removed. Additionally read in the combined pheno file.
+```{r readdata}
+# GRset.flt <- readRDS("./data/GRset.flt.rds")
+# beta <- read_csv("./data/betaALL121.csv")
+# beta <- column_to_rownames(beta, var="X1")
+# 
+# pheno <- read_csv("./data/pheno_combined.csv")
+
+
+```
+Match the order of the beta data to that of the pheno file and then run dmpFinder to find differentially methylated probes between SHH and Group 4 
+```{r diffmeth}
+beta_SHHGrp4_matched <- read_csv("./data/beta_SHHGrp4.csv")
+beta_SHHGrp4_matched <- column_to_rownames(beta_SHHGrp4_matched, var="X1")
+pheno_SHHGrp4 <- read_csv("./data/pheno_SHHGrp4.csv")
+pheno_SHH <- filter(pheno_SHHGrp4, pheno_SHHGrp4$Subgroup=="SHH")
+beta_SHH <- beta_SHHGrp4_matched[,pheno_SHH$geo_accession_Meth]
+# Remove samples with no data for overall survival
+keep <- !(is.na(pheno_SHH$OS..years.))
+table(keep)
+pheno_SHH_survflt <- pheno_SHH[keep,]
+# Remove samples that were censored before 5 years - ie OS < 5 and Dead==0
+keep <- !(pheno_SHH_survflt$OS..years.<5 & pheno_SHH_survflt$Dead==0)
+table(keep)
+pheno_SHH_testnot <- pheno_SHH_survflt[!keep,]
+pheno_SHH_survflt <- pheno_SHH_survflt[keep,]
+# Label samples with no value for Dead but OS > 5 years as Dead==0
+pheno_SHH_survflt2 <- pheno_SHH_survflt %>%
+  select(Study_ID:geo_accession_Meth) %>%
+  mutate(
+    Dead_new = case_when(
+      !is.na(Dead) ~ Dead,
+      is.na(Dead)   ~ 0
+    )
+  )
+# 
+keep <- !is.na(pheno_SHH_survflt2$geo_accession_Meth)
+pheno_SHH_survflt2 <- pheno_SHH_survflt2[keep,]
+
+beta_SHH_matched <- beta_SHH[,pheno_SHH_survflt2$geo_accession_Meth]
+
+beta_SHH_flt_t <- t(beta_SHH_matched)
+
+```
+
+```{r glmnet}
+registerDoMC(cores = 4)
+glmnetFit <- glmnet(x=beta_SHH_flt_t, y=pheno_SHH_survflt2$Dead_new, family="binomial")
+glmnetFit
+plot(glmnetFit)
+
+cvfit <- cv.glmnet(x=beta_SHH_flt_t, y=pheno_SHH_survflt2$Dead_new, family="binomial", type.measure="class")
+```
+Results / Plot - Plot the cvfit model, showing Misclassification error versus log(lambda)
+```{r plotcv}
+plot(cvfit)
+#plot(cvfit, main="alpha 0.9'')
+
+```
+
+We see from this plot that the lambda that minimized misclassification error still has ~32-33% error.
+
+Proceed now to get the probes that contribute to this model.
+```{r features}
+c <- coef(cvfit, s= "lambda.min")[,1]
+coef <- data.frame(dead5 = c, probe = names(c))
+GOImin1 <- filter(coef, dead5 != 0)
+#write.table(GOImin,file = "predictive_probes_min_Dead.txt", sep = "\t", quote = F, col.names = T, row.names = F)
+c <- coef(cvfit, s= "lambda.1se")[,1]
+coef <- data.frame(dead5 = c, probe = names(c))
+GOImin2 <- filter(coef, dead5 != 0)
+#write.table(GOImin,file = "predictive_probes_lse_Dead.txt", sep = "\t", quote = F, col.names = T, row.names = F)
+
+```
+
+There are 20 probes that contribute.
+
+Now I'll run the model again for just females and just males and see if the probes overlap.
+```{r modelbysex}
+pheno_SHH_survM <- filter(pheno_SHH_survflt2, predictedSex=="Male")
+pheno_SHH_survF <- filter(pheno_SHH_survflt2, predictedSex=="Female")
+beta_SHH_survM <- beta_SHH_matched[,pheno_SHH_survM$geo_accession_Meth]
+beta_SHH_survF <- beta_SHH_matched[,pheno_SHH_survF$geo_accession_Meth]
+
+beta_SHH_M_t <- t(beta_SHH_survM)
+beta_SHH_F_t <- t(beta_SHH_survF)
+
+registerDoMC(cores = 4)
+cvfitM <- cv.glmnet(x=beta_SHH_M_t, y=pheno_SHH_survM$Dead_new, family="binomial", type.measure="class")
+cvfitF <- cv.glmnet(x=beta_SHH_F_t, y=pheno_SHH_survF$Dead_new, family="binomial", type.measure="class")
+```
+
+We plot each of these models.
+```{r plotsex, message=FALSE, warning=FALSE, fig.show="hold", out.width="50%"}
+
+plot(cvfitM, main="Male Survival > 5yrs")
+plot(cvfitF, main="Female Survival > 5 yrs")
+
+```
+
+Pull out predictive probes from Male and Female survival GLM models
+```{r predictprobes}
+cM1 <- coef(cvfitM, s= "lambda.min")[,1]
+coefM1 <- data.frame(dead5 = cM1, probe = names(cM1))
+GOIminM1 <- filter(coefM1, dead5 != 0)
+#write.table(GOIminM1,file = "predictive_probes_min_MaleDead.txt", sep = "\t", quote = F, col.names = T, row.names = F)
+cM2 <- coef(cvfitM, s= "lambda.1se")[,1]
+coefM2 <- data.frame(dead5 = cM2, probe = names(cM2))
+GOIminM2 <- filter(coefM2, dead5 != 0)
+#write.table(GOIminM2,file = "predictive_probes_lse_MaleDead.txt", sep = "\t", quote = F, col.names = T, row.names = F)
+
+cF1 <- coef(cvfitF, s= "lambda.min")[,1]
+coefF1 <- data.frame(dead5 = cF1, probe = names(cF1))
+GOIminF1 <- filter(coefF1, dead5 != 0)
+#write.table(GOIminF1,file = "predictive_probes_min_FemaleDead.txt", sep = "\t", quote = F, col.names = T, row.names = F)
+cF2 <- coef(cvfitF, s= "lambda.1se")[,1]
+coefF2 <- data.frame(dead5 = cF2, probe = names(cF2))
+GOIminF2 <- filter(coefF2, dead5 != 0)
+#write.table(GOIminF2,file = "predictive_probes_lse_FemaleDead.txt", sep = "\t", quote = F, col.names = T, row.names = F)
+
+```
+
+Now let's make a venn diagram to see how many of the probes overlap between the models.
+```{r venn}
+x <-  list(
+  All = GOImin1[-1,2],
+  Male = GOIminM1[-1,2], 
+  Female = GOIminF1[-1,2]
+  )
+ggvenn(
+  x, 
+  fill_color = c("#0073C2FF", "#EFC000FF", "#868686FF"),
+  stroke_size = 0.5, set_name_size = 4
+  )
+
+# myCol <- brewer.pal(3, "Pastel2")
+# venn.diagram(
+#         x = list(GOImin1[-1,2], GOIminM1[-1,2], GOIminF1[-1,2]),
+#         category.names = c("All" , "Male only" , "Female Only"),
+#         #filename = 'Predictive5yrsurvival_venn_diagramm.png',
+#         output=FALSE,
+#         
+#         # Output features
+#         # imagetype="png" ,
+#         # height = 480 , 
+#         # width = 480 , 
+#         # resolution = 300,
+#         # compression = "lzw",
+#         
+#         # Circles
+#         lwd = 2,
+#         lty = 'blank',
+#         fill = myCol,
+#         
+#         # Numbers
+#         cex = .6,
+#         fontface = "bold",
+#         fontfamily = "sans",
+#         
+#         # Set names
+#         cat.cex = 0.6,
+#         cat.fontface = "bold",
+#         cat.default.pos = "outer",
+#         cat.pos = c(-27, 27, 135),
+#         cat.dist = c(0.055, 0.055, 0.085),
+#         cat.fontfamily = "sans",
+#         rotation = 1
+# )
+
+
+```
+

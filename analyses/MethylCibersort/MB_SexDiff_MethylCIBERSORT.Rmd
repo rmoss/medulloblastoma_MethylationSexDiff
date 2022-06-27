@@ -1,0 +1,229 @@
+---
+title: "MBSexDiff_MethylCIBERSORT"
+author: "Rachel Moss"
+date: "12/30/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load packages and required data from methylCIBERSORT
+
+Load required packages
+```{r LoadPackage, message=FALSE, warning=FALSE}
+## Data: /home/ljmills/public/GSE85212_RAW
+## srun --nodes=1 --ntasks-per-node=4 --mem=40g  --time=3:00:00  -p ccgg --pty bash -i
+library(MethylCIBERSORT)
+library(readr)
+# library(affy)
+library(GEOquery)
+# library(readr)
+# library(EnsDb.Hsapiens.v79)
+library(dplyr)
+library(tidyr)
+library(tibble)
+library(ggplot2)
+library(tidyverse)
+library(ggpubr)
+library(rstatix)
+library(openxlsx)
+```
+
+```{r readdata}
+# # Read in data for the reference cell types from the MethylCIBERSORT packaage
+# data("V2_Signatures")
+# data("StromalMatrix_V2")
+# dim(Stromal_v2)
+# 
+# # Read in each of the beta value files for each subgroup of Medulloblastoma
+# G3Beta <- read_csv("/Volumes/GoogleDrive/.shortcut-targets-by-id/1Ltbi_PE2R7tMPSb5iRZtW_rWMcXE84zl/Medulloblastoma Sex Differences /Natali - Beta Values/G3BetaValuesNew.csv")
+# G3Beta <- column_to_rownames(G3Beta, var="X1")
+# 
+# G4Beta <- read_csv("/Volumes/GoogleDrive/.shortcut-targets-by-id/1Ltbi_PE2R7tMPSb5iRZtW_rWMcXE84zl/Medulloblastoma Sex Differences /Natali - Beta Values/G4BetaValuesNew.csv")
+# G4Beta <- column_to_rownames(G4Beta, var="X1")
+# 
+# SHHBeta <- read_csv("/Volumes/GoogleDrive/.shortcut-targets-by-id/1Ltbi_PE2R7tMPSb5iRZtW_rWMcXE84zl/Medulloblastoma Sex Differences /Natali - Beta Values/SHHBetaValuesNew.csv")
+# SHHBeta <- column_to_rownames(SHHBeta, var="X1")
+# 
+# WNTBeta <- read_csv("/Volumes/GoogleDrive/.shortcut-targets-by-id/1Ltbi_PE2R7tMPSb5iRZtW_rWMcXE84zl/Medulloblastoma Sex Differences /Natali - Beta Values/WNTBetaValuesNew.csv")
+# WNTBeta <- column_to_rownames(WNTBeta, var="X1")
+```
+
+Create reference file
+```{r reference}
+# Signature_Test <- FeatureSelect.V4(CellLines.matrix = NULL, Heatmap = FALSE, export = TRUE, sigName = 'ImmuneReferenceMethyl', Stroma.matrix = Stromal_v2, deltaBeta = 0.2, FDR = 0.01, MaxDMRs = 100, Phenotype.stroma = Stromal_v2.pheno)
+Reference <- read.delim('ImmuneReferenceMethyl_Signature.txt')
+```
+
+Format MB beta value files for upload to cibersort
+```{r ciberReady}
+# Prep.CancerType(G3Beta, Probes = Reference$NAME, fname = 'G3Mixture')
+# G3txt <- read.delim('G3Mixture.txt')
+# G3txt$NAME <- as.character((G3txt$NAME))
+# G3txt <- as.data.frame(G3txt, row.names=G3txt$NAME) 
+# G3txt <- G3txt[,-1]
+# G3txt <- G3txt*100
+# G3txt <- rownames_to_column(G3txt, var="NAME")
+# write.table(G3txt, file = "G3_Methyl_Mixture.txt", sep = "\t", row.names = FALSE, quote = FALSE )
+# 
+# Prep.CancerType(G4Beta, Probes = Reference$NAME, fname = 'G4Mixture')
+# G4txt <- read.delim('G4Mixture.txt')
+# G4txt$NAME <- as.character((G4txt$NAME))
+# G4txt <- as.data.frame(G4txt, row.names=G4txt$NAME) 
+# G4txt <- G4txt[,-1]
+# G4txt <- G4txt*100
+# G4txt <- rownames_to_column(G4txt, var="NAME")
+# write.table(G4txt, file = "G4_Methyl_Mixture.txt", sep = "\t", row.names = FALSE, quote = FALSE )
+# 
+# Prep.CancerType(SHHBeta, Probes = Reference$NAME, fname = 'SHHMixture')
+# SHHtxt <- read.delim('SHHMixture.txt')
+# SHHtxt$NAME <- as.character((SHHtxt$NAME))
+# SHHtxt <- as.data.frame(SHHtxt, row.names=SHHtxt$NAME) 
+# SHHtxt <- SHHtxt[,-1]
+# SHHtxt <- SHHtxt*100
+# SHHtxt <- rownames_to_column(SHHtxt, var="NAME")
+# write.table(SHHtxt, file = "SHH_Methyl_Mixture.txt", sep = "\t", row.names = FALSE, quote = FALSE )
+# 
+# Prep.CancerType(WNTBeta, Probes = Reference$NAME, fname = 'WNTMixture')
+# WNTtxt <- read.delim('WNTMixture.txt')
+# WNTtxt$NAME <- as.character((WNTtxt$NAME))
+# WNTtxt <- as.data.frame(WNTtxt, row.names=WNTtxt$NAME) 
+# WNTtxt <- WNTtxt[,-1]
+# WNTtxt <- WNTtxt*100
+# WNTtxt <- rownames_to_column(WNTtxt, var="NAME")
+# write.table(WNTtxt, file = "WNT_Methyl_Mixture.txt", sep = "\t", row.names = FALSE, quote = FALSE )
+
+# Int <- intersect(rownames(G3Beta), rownames(Stromal_v2))
+# Mat <- G3Beta[match(Int, rownames(G3Beta)),]
+# Stromal_v2 <- Stromal_v2[match(Int, rownames(Stromal_v2)),]
+
+```
+
+Now I ran each of these groups in CIBERSORTx - https://cibersortx.stanford.edu/
+
+Read in pheno file and cibersort results files and left_join to pheno file
+```{r, cibersort}
+# gse_pheno <- getGEO("GSE85212",GSEMatrix = TRUE, getGPL = FALSE)
+# pheno <- pData(gse_pheno$GSE85212_series_matrix.txt.gz)
+# pheno$title <- as.character(pheno$title)
+# pheno$title <- substr(pheno$title, 1, nchar(pheno$title)-12)
+# pheno_given <- read.csv(file="./data/phenoCavalli.txt")
+# pheno_given$Study_ID <- as.character(pheno_given$Study_ID)
+# pheno_fin <- left_join(pheno_given, pheno, by = c("Study_ID" = "title"))
+# pheno_fin <- pheno_fin %>%
+#   rename(
+#     geo_accession_Expr = geo_accession.x,
+#     geo_accession_Meth = geo_accession.y
+#   )
+# write.csv(pheno_fin, "./data/pheno_combined.csv")
+pheno_fin <- read_csv("./data/pheno_combined.csv")
+
+CIBERSORTx_G3 <- read_delim("cibersort/CIBERSORTx_Job5_Cavalli_MB_G3Results.txt", 
+    "\t", escape_double = FALSE, trim_ws = TRUE)
+CIBERSORTx_G4 <- read_delim("cibersort/CIBERSORTx_Job6_Cavalli_MB_G4Results.txt", 
+    "\t", escape_double = FALSE, trim_ws = TRUE)
+CIBERSORTx_WNT <- read_delim("cibersort/CIBERSORTx_Job7_Cavalli_MB_WNTResults.txt", 
+    "\t", escape_double = FALSE, trim_ws = TRUE)
+CIBERSORTx_SHH <- read_delim("cibersort/CIBERSORTx_Job8_Cavalli_MB_SHHResults.txt", 
+    "\t", escape_double = FALSE, trim_ws = TRUE)
+CIBERSORTx_MB <- rbind(CIBERSORTx_G3, CIBERSORTx_G4, CIBERSORTx_WNT, CIBERSORTx_SHH)
+CIBERSORTx_MB <- separate(data = CIBERSORTx_MB, col = Mixture, into = c("geo_accession", "slide", "array"), sep = "\\_")
+
+celltypes_begin <- left_join(pheno_fin, CIBERSORTx_MB, by=c("geo_accession_Meth"="geo_accession"))
+celltypes <- celltypes_begin[,c(1,54:63)]
+celltypes <- as_tibble(celltypes)
+celltypes <- celltypes %>%
+  rename(
+    Monocytes = CD14,
+    B_Lymphocytes = CD19,
+    NK_cells = CD56,
+    Cytotoxic_T_lymphocytes = CD8,
+    Eosinophils = Eos,
+    Neutrophils = Neu,
+    Helper_Effector_Lymphocytes = CD4_Eff,
+    T_cells_regulatory = Treg
+  )
+
+# remove fibroblasts
+celltypes <- celltypes[,c(1:8,10:11)]
+head(celltypes)
+```
+
+Plot boxplot of  the absolute gene signature scores by cell type comparing Female vs male
+
+```{r fig1, echo=FALSE}
+
+celltypes_Long <- pivot_longer(celltypes, -c(Study_ID), names_to="cellType", values_to="Absolute score")
+
+celltypes_Long_Pheno <- celltypes_Long %>%
+  left_join(select(pheno_fin, Study_ID, predictedSex, Subgroup, Subtype))
+
+#compare_means(score~predictedSex, data=celltypes_Long_Pheno)
+
+p1 <- ggplot(celltypes_Long_Pheno, aes(x=factor(cellType), y=`Absolute score`, fill=predictedSex)) + 
+  geom_boxplot() #+
+  #ylim(0,0.4)
+p1 + stat_compare_means(label="p.signif", hide.ns=T) + theme_bw() + scale_fill_manual(values=c("red", "black")) +  theme(axis.title.x=element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.2, hjust = 0.95))
+#ggsave("./figures/MethyCIBERSORT_CavalliMeth_SexDiffBoxplot_Figure.png")
+
+
+
+p2 <- ggplot(celltypes_Long_Pheno, aes(x=factor(cellType), y=`Absolute score`, fill=predictedSex)) + 
+  geom_boxplot() +
+  ylim(0,0.4)
+p2 + theme(axis.text.x = element_text(angle = 90)) + stat_compare_means(aes(group=Subgroup), label="p.signif", hide.ns=F) + theme_bw()
+
+```
+
+
+Now plot the same but for each by subgroup.
+```{r fig2, echo=FALSE, fig.height=8, fig.width=8}
+levels(celltypes_Long_Pheno$Subgroup) <- c("SHH", "WNT", "Group3", "Group4")
+p <- ggplot(celltypes_Long_Pheno, aes(x=factor(cellType), y=`Absolute score`, fill=predictedSex)) + 
+  geom_boxplot() +
+  facet_wrap(~factor(Subgroup, levels=c("SHH", "WNT", "Group3", "Group4")), scales="free_y", ncol=2)
+    
+p + theme_bw(base_size=16) + scale_fill_manual(values=c("red", "black")) + theme(axis.title.x=element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.2, hjust = 0.95))  #+ stat_compare_means(label="p.signif", hide.ns=T)# label.x.npc=c('center'), label.y.npc=c('center'))
+#ggsave("./figures/MethyCIBERSORT_CavalliMethylation_SexDiffBySubgroup_Figure_v2.pdf")
+```
+
+
+Boxplots comparing all subgroups per cell type
+```{r fig4, fig.width=8, echo=FALSE}
+p1 <- ggplot(celltypes_Long_Pheno, aes(x=factor(cellType), y=`Absolute score`, fill=Subgroup)) + 
+  geom_boxplot() #+
+  #ylim(0,0.4)
+p1 + theme_bw(base_size=16) + theme(axis.title.x=element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.2, hjust = 0.95)) + stat_compare_means(label="p.signif", hide.ns=T) 
+
+#ggsave("./figures/MethylCIBERSORT_CavalliMethylation_SubgroupBoxplotbyCellType_Figure_v2.pdf")
+
+# p2 <- ggplot(celltypes_Long_Pheno, aes(x=cellType, y=`Absolute score`, fill=Subgroup)) + 
+#   geom_boxplot() +
+#   ylim(0,0.4)
+# p2 + theme_bw() + theme(axis.title.x=element_blank(), axis.text.x = element_text(angle = 270, hjust=0)) + stat_compare_means(aes(group=Subgroup), label="p.signif", hide.ns=F) 
+```
+
+
+Calculate tables for significance
+```{r stats}
+celltypes_Long_Pheno <- celltypes_Long_Pheno %>%
+  rename(
+    score = `Absolute score`
+  )
+head(celltypes_Long_Pheno)
+
+wilcox_sexDiff_subgroup <- compare_means(score~predictedSex, data=celltypes_Long_Pheno, group.by=c("Subgroup","cellType"))
+
+wilcox_sexDiff_all <- compare_means(score~predictedSex, data=celltypes_Long_Pheno, group.by=c("cellType"))
+
+wilcox_SubgroupCellTypes <- compare_means(score~Subgroup, data=celltypes_Long_Pheno, group.by=c("cellType"))
+
+# list_of_datasets <- list("MethylCIBERSORT_SexDiffOverall" = wilcox_sexDiff_all, 
+#                          "MethylCIBERSORT_SexDiffbySubgroup" = wilcox_sexDiff_subgroup, 
+#                          "MethylCIBERSORT_SubgroupCelltypes" = wilcox_SubgroupCellTypes)
+# write.xlsx(list_of_datasets, file = "./stats/wilcoxstats_MethylCIBERSORT.xlsx")
+
+
+```

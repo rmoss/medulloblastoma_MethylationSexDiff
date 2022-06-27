@@ -1,0 +1,91 @@
+---
+title: "Conumee Tutorial"
+output: html_notebook
+---
+# Load Libraries
+
+```{r libraries}
+library(minfi)
+library(conumee)
+library(minfiData)
+```
+
+# Load Data
+```{r loaddata}
+RGsetTCGA <- read.450k.url() 
+MsetTCGA <- preprocessIllumina(RGsetTCGA)
+MsetTCGA
+data(MsetEx)
+MsetEx
+```
+
+# Create annotation object
+
+```{r annot}
+data(exclude_regions)
+data(detail_regions)
+head(detail_regions, n = 2)
+anno <- CNV.create_anno(array_type = "450k", exclude_regions = exclude_regions, detail_regions = detail_regions)
+anno
+
+
+```
+# Combine intensity values
+
+```{r combineintensity}
+data(tcgaBRCA.sentrix2name)  # TCGA sample IDs are supplied with the conumee package
+sampleNames(MsetTCGA) <- tcgaBRCA.sentrix2name[sampleNames(MsetTCGA)]
+tcga.data <- CNV.load(MsetTCGA)
+tcga.controls <- grep("-11A-", names(tcga.data))
+names(tcga.data)
+## [1] "TCGA-AR-A1AU-01A-11D-A12R-05" "TCGA-AR-A1AY-01A-21D-A12R-05"
+tcga.data
+## CNV data object
+##    created   : 
+##   @intensity : available (2 samples, 485512 probes)
+
+minfi.data <- CNV.load(MsetEx)
+minfi.controls <- pData(MsetEx)$status == "normal"
+controls.data <- CNV.load(MsetControls)
+```
+# Main CNV Analysis
+
+```{r cnv}
+x <- CNV.fit(minfi.data["GroupB_1"], minfi.data[minfi.controls], anno)
+# y <- CNV.fit(tcga.data["TCGA-AR-A1AU-01A-11D-A12R-05"], controls.data, anno)  # CopyNumber450kData package is deprecated
+# z <- CNV.fit(tcga.data["TCGA-AR-A1AY-01A-21D-A12R-05"], controls.data, anno)
+y <- CNV.fit(tcga.data["TCGA-AR-A1AU-01A-11D-A12R-05"], minfi.data[minfi.controls], anno)  # minfiData control samples
+z <- CNV.fit(tcga.data["TCGA-AR-A1AY-01A-21D-A12R-05"], minfi.data[minfi.controls], anno)
+
+x <- CNV.bin(x)
+x <- CNV.detail(x)
+x <- CNV.segment(x)
+
+y <- CNV.segment(CNV.detail(CNV.bin(y)))
+z <- CNV.segment(CNV.detail(CNV.bin(z)))
+
+x
+
+```
+# Output plots and text files
+
+```{r output}
+#pdf("~/conumee_analysis/CNVplots.pdf", height = 9, width = 18)
+CNV.genomeplot(x)
+
+CNV.genomeplot(y)
+CNV.genomeplot(y, chr = "chr6")
+
+CNV.genomeplot(z)
+CNV.genomeplot(z, chr = "chr10")
+CNV.detailplot(z, name = "PTEN")
+CNV.detailplot_wrap(z)
+#dev.off()
+
+head(CNV.write(y, what = "segments"), n = 5)
+
+
+```
+
+
+

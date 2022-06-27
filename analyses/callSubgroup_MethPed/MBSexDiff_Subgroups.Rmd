@@ -1,0 +1,225 @@
+---
+title: "MBSexDiff Newcastle Subgroup Differential Methylation"
+author: "Rachel Moss"
+date: "4/6/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+require("knitr")
+knitr::opts_chunk$set(echo = TRUE)
+opts_knit$set(root.dir = "/Users/moss0134/Google Drive/Research/SexDiffMedullo/Analysis_RMM_new")
+```
+
+Load libraries
+```{r load, include=FALSE}} 
+library(ggplot2)
+library(IlluminaHumanMethylation450kanno.ilmn12.hg19)
+library(IlluminaHumanMethylation450kmanifest)
+library(IlluminaHumanMethylationEPICanno.ilm10b4.hg19)
+library(limma)
+library(minfi)
+library(RColorBrewer)
+library(missMethyl)
+library(Gviz)
+#library(DMRcate)
+library(stringr)
+library(tidyverse)
+library(readxl)
+library(Biobase)
+library(GEOquery)
+library(sva)
+library(devtools)
+library(ComplexHeatmap)
+library(doParallel)
+library(gtools)
+library(Polychrome)
+library(openxlsx)
+library(MethPed)
+library(randomForest)
+library(impute)
+library(data.table)
+library(caret)
+```
+
+Load filtered GRSet, add MB subtype to phenoData, and separate into different sets for analysis by subgroup
+```{r loaddata}
+setwd("/Users/moss0134/Google Drive/Research/SexDiffMedullo/Analysis_RMM_new")
+GRSet.flt <- readRDS("GRSet_GSE93646_filt.RDS")
+Newcastle_beta <- getBeta(GRSet.flt)
+#write.csv(Newcastle_beta, "./data/Newcastle_beta_filt.csv")
+# Newcastle_beta <- as.data.frame(Newcastle_beta)
+# Newcastle_beta <- Newcastle_beta %>%
+#   rownames_to_column(var="TargetID")
+Newcastle_beta <-read_csv("./data/Newcastle_beta_filt.csv")
+#Newcastle_beta <- vroom("./data/Newcastle_beta_filt.csv")
+Newcastle_beta <- as.data.frame(Newcastle_beta)
+colnames(Newcastle_beta)[1] <- "TargetID"
+# Newcastle_beta <- vroom("./data/Newcastle_beta_filt.csv")
+NewcastlePheno <- read_csv("./data/Newcastle_pheno_filt.csv")
+```
+
+## Use MethPed to determine subgroups of the MB data samples
+```{r MethPed}
+callSubgroup <- function(beta) {
+  subgroup <- MethPed(beta)
+  predictions <- subgroup$predictions
+  maxPred <- colnames(predictions)[max.col(predictions,ties.method="first")]
+  probPred <- apply(predictions, 1, max)
+  predSubgroup <- data.frame(rownames(predictions),maxPred,probPred)
+  colnames(predSubgroup) <- c("sampleName","subgroup","probSubgroup")
+  return(predSubgroup)
+}
+```
+First check for missing values in data
+```{r missing}
+# missingIndex <- checkNA(beta_matrix)
+# head(missingIndex)
+# sum(missingIndex>0)
+```
+
+Apply the MedPed classifier
+```{r subgroups}
+Newcastlesub <- callSubgroup(Newcastle_beta)
+# subgroup <- MethPed(beta_matrix)
+summary(Newcastlesub)
+# myClassification_max <- MethPed(MethPed_sample,prob=FALSE)
+# subgroup <- MethPed(beta,prob=TRUE)
+# plot(subgroup)
+
+```
+count missing probes
+```{r missingprobes}
+probeMis(subgroup)
+length(probeMis(subgroup))
+
+
+```
+
+Now I will take the largest probability in the results and use it as the MB subgroup classification. I remove 87 samples that had less than 70% call
+```{r updatesubgroup}
+# phenoData <- as.data.frame(pData(GRSet.flt))
+Newcastlesub$sampleName <- sub("_.*","",Newcastlesub$sampleName)
+phenoNewc <- left_join(NewcastlePheno,Newcastlesub,by=c("geo_accession"="sampleName"))
+
+table(phenoData2$subgroup,phenoData2$probSubgroup<=0.7)
+table(phenoData2$subgroup,phenoData2$probSubgroup>=0.9)
+
+
+#write_csv(phenoData2,file="./data/Newcastle_pheno_filt_MethPedsubgroup.csv")
+# pData(GRSet.subtype) <- phenoData2
+# keep <- filter(phenoData2, (probSubgroup>=0.7) & (subgroup %in% c("MB_Gr3","MB_Gr4","MB_SHH","MB_WNT")))$sampleName
+# length(keep)
+# GRSet.subtype <- GRSet.flt[,keep]
+# phenoData3 <- phenoData2 %>% 
+#   column_to_rownames(var=sampleName)
+
+```
+
+
+Ok, now I make a separate GRSet for each subgroup
+```{r subgroupthings}
+# keep <- filter(phenoData2, subgroup=="MB_SHH")
+# GRSet_SHH <- GRSet.subtype[,keep]
+# 
+
+
+```
+
+## Run MethPed on Cavalli data
+
+Read in the beta data for all the Cavalli samples we used. Read in each of the beta value files for each subgroup of Medulloblasto
+```{r cavalliload}
+pheno_fin <- read_csv("./data/pheno_combined.csv")
+
+G3Beta <- read_csv("/Users/moss0134/Google Drive/Medulloblastoma Sex Differences /Natali - Beta Values/G3BetaValues121.csv")
+colnames(G3Beta)[1] <- "TargetID"
+G3Beta <- as.data.frame(G3Beta)
+
+G4Beta <- read_csv("/Users/moss0134/Google Drive/Medulloblastoma Sex Differences /Natali - Beta Values/G4BetaValues121.csv")
+colnames(G4Beta)[1] <- "TargetID"
+G4Beta <- as.data.frame(G4Beta)
+
+SHHBeta <- read_csv("/Users/moss0134/Google Drive/Medulloblastoma Sex Differences /Natali - Beta Values/SHHBetaValues121.csv")
+colnames(SHHBeta)[1] <- "TargetID"
+SHHBeta <- as.data.frame(SHHBeta)
+
+WNTBeta <- read_csv("/Users/moss0134/Google Drive/Medulloblastoma Sex Differences /Natali - Beta Values/WNTBetaValues121.csv")
+colnames(WNTBeta)[1] <- "TargetID"
+WNTBeta <- as.data.frame(WNTBeta)
+
+```
+
+Now I'll use the MethPred classifier on all of the Cavalli data:
+```{r cavallisubgroup}
+
+G3sub <- callSubgroup(G3Beta)
+G4sub <- callSubgroup(G4Beta) 
+WNTsub <- callSubgroup(WNTBeta)
+SHHsub <- callSubgroup(SHHBeta)
+
+CavSub <- rbind(G3sub,G4sub,WNTsub,SHHsub)
+summary(CavSub$probSubgroup)
+
+CavSub$sampleName <- sub("_.*","",CavSub$sampleName)
+phenoCav <- left_join(pheno_fin,CavSub, by=c("geo_accession_Meth"="sampleName"))
+#write.csv(phenoCav,"./data/pheno_CavalliCombined_subgrouped.csv")
+summary(phenoCav$probSubgroup)
+table(phenoCav$subgroup,phenoCav$probSubgroup>=0.687)
+table(phenoCav$subgroup,phenoCav$probSubgroup>=0.842)
+table(phenoCav$subgroup,phenoCav$`subgroup:ch1`)
+phenoCav$subgroup <- sub("MB_","",phenoCav$subgroup)
+phenoCav$subgroup <- sub("Gr","Group",phenoCav$subgroup)
+mismatches <- filter(phenoCav, subgroup != `subgroup:ch1`)
+confusionMatrix(data=factor(phenoCav$subgroup),reference=phenoCav$`subgroup:ch1`)
+```
+
+## Run MethPed on Hovestadt data
+Read in the beta data for all the Hovestadt samples, GSE54880.
+```{r hovestadtload}
+phenoHov <- read_csv("./data/Hovestadt_pheno.csv")
+colnames(phenoHov)[1] <- "sample"
+HovBeta <-  read_delim("GSE54880/GSE54880_MB-450k_GEOupload_Beta.txt.gz", 
+    delim = "\t", escape_double = FALSE, 
+    trim_ws = TRUE)
+colnames(HovBeta)[1] <- "TargetID"
+HovBeta_filt <- HovBeta[,c(1,grep("Beta",names(HovBeta)))]
+HovBeta_filt <- HovBeta_filt[,1:277]
+HovBeta_filt <- as.data.frame(HovBeta_filt)
+HovBeta_filt <- HovBeta_filt %>%
+  column_to_rownames(var="TargetID")
+```
+
+```{r missing}
+missingIndex <- checkNA(HovBeta_filt)
+head(missingIndex)
+sum(missingIndex>0)
+if(exists(".Random.seed")) rm(.Random.seed)
+imputedData <- impute.knn(as.matrix(HovBeta_filt))
+HovBeta_imputed <- imputedData$data
+checkNA(HovBeta_imputed)
+write.csv(HovBeta_imputed,"./Hovestadt_GSE54880_MB-450k_Beta_imputed.csv")
+
+```
+
+Now I'll use the MethPred classifier on the Hovestadt data:
+```{r hovestadtsubgroup}
+
+HovSub <- callSubgroup(HovBeta_imputed)
+
+HovSub$sampleName <- sub("X","",HovSub$sampleName)
+phenoHov <- left_join(pd,HovSub, by=c("description"="sampleName"))
+
+summary(phenoCav$probSubgroup)
+table(phenoCav$subgroup,phenoCav$probSubgroup>=0.687)
+table(phenoCav$subgroup,phenoCav$probSubgroup>=0.842)
+table(phenoCav$subgroup,phenoCav$`subgroup:ch1`)
+phenoHov$subgroup <- sub("MB_","",phenoHov$subgroup)
+phenoHov$subgroup <- sub("Gr","Group",phenoHov$subgroup)
+phenoHov$`molecular subgroup:ch1` <- gsub('\\s+', '', phenoHov$`molecular subgroup:ch1`)
+phenoHov_filt <- phenoHov[1:276,]
+#write.csv(phenoHov_filt,"./pheno_Hovestadt_subgrouped.csv", row.names=FALSE)
+mismatches <- filter(phenoHov, subgroup != `subgroup:ch1`)
+confusionMatrix(data=factor(phenoHov_filt$subgroup),reference=factor(phenoHov_filt$`molecular subgroup:ch1`))
+```
+
