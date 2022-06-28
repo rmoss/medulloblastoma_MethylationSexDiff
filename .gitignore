@@ -41,3 +41,7 @@ vignettes/*.pdf
 # data should not be synced
 data/processed
 data/raw
+
+# don't sync .rds files
+*.RDS
+*.rds
