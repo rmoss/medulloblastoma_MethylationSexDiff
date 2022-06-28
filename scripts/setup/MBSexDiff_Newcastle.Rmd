@@ -25,7 +25,7 @@ library(shinyMethyl)
 Download files from GEO 
 ```{r data}
 #increase file download timeout
-options(timeout = 600)
+options(timeout = 800)
 
 #download GEO object
 # gse <- getGEO("GSE93646", GSEMatrix = TRUE)
