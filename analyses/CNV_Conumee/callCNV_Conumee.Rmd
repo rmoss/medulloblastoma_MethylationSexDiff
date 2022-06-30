@@ -1,11 +1,16 @@
 ---
 title: "MB Sex Differences in DNA Methylation in subgroups - call CNVs"
-author: Rachel Moss
-date: June 27, 2022
-output: 
+author: "Rachel Moss"
+date: "June 27, 2022"
+output:
+  html_document:
+    toc: yes
+    df_print: paged
   html_notebook:
-    toc: true
-    toc_float: true
+    toc: yes
+    toc_float: yes
+editor_options:
+  chunk_output_type: inline
 ---
 
 ## Introduction
@@ -21,6 +26,9 @@ The GSE15745 healthy brain dataset does not have idat files available, so I will
 library(minfi)
 library(conumee)
 library(GEOquery)
+library(tidyverse)
+library(readr)
+library(filesstrings)
 ```
 
 ### Specify files and paths
@@ -30,26 +38,28 @@ The healthy brain data will be downloaded from GEO.
 
 ```{r inputs}
 # Set the directory where the processed data will be kept
-rdata <- "../../data/raw"
-procData <- "../../data/processed"
-control <- 
+rawdata <- "/Volumes/GoogleDrive/My Drive/Research/SexDiffMedullo/Analysis_RMM_new/data/raw"
+procData <- "/Volumes/GoogleDrive/My Drive/Research/SexDiffMedullo/Analysis_RMM_new/data/processed"
+controlGSE <- "GSE134379"
+phenoNewFile <- "Newcastle_pheno_v3.csv"
 
-# Set the directory where the counts files are found
-counts_dir <- here::here("analyses", "mutation_counts")
 
-# File paths to the counts files for LGAT and medulloblastoma
-lgat_path <- file.path(counts_dir, "LGAT_gene-mutations.tsv")
-mb_path <- file.path(counts_dir, "Medulloblastoma_gene-mutations.tsv")
-
-# Reference directory & FLAGS (frequently mutated genes)
-ref_dir <- here::here("data", "reference")
-flags_path <- file.path(ref_dir, "FLAGS.txt")
+# # Set the directory where the counts files are found
+# counts_dir <- here::here("analyses", "mutation_counts")
+# 
+# # File paths to the counts files for LGAT and medulloblastoma
+# lgat_path <- file.path(counts_dir, "LGAT_gene-mutations.tsv")
+# mb_path <- file.path(counts_dir, "Medulloblastoma_gene-mutations.tsv")
+# 
+# # Reference directory & FLAGS (frequently mutated genes)
+# ref_dir <- here::here("data", "reference")
+# flags_path <- file.path(ref_dir, "FLAGS.txt")
 ```
 
 Outputs
 ```{r outputs}
 # set the directory to save output plots
-results_dir <- "./results"
+results_dir <- "../../results/"
 
 # create the results directory if it does not exist
 if (!dir.exists(results_dir)){
@@ -60,242 +70,210 @@ if (!dir.exists(results_dir)){
 ### Download Data
 
 ```{r downloads}
-#increase file download timeout
-options(timeout = 800)
-gc()
+# #download GEO object
+# gseCtrl <- getGEO(controlGSE, GSEMatrix = TRUE)
+# #get phenotype data - sample sheet
+# pd = pData(gseCtrl[[1]])
+# pd_filt <- pd[,c("geo_accession","title","source_name_ch1","supplementary_file","supplementary_file.1","age:ch1","bead chip:ch1","brain region:ch1","diagnosis:ch1","gender:ch1","plate:ch1","tissue:ch1","well position:ch1")]
+# pd_filt$filename <- sub(".*suppl/","",pd$supplementary_file)
+# pd_filt$Basename <- sub("_Grn.idat.gz","",pd_filt$filename)
+# pd_filt <- pd_filt %>%
+#   separate(col=Basename,into=c("GSM","Sentrix_ID","Sentrix_Position"),sep="_",remove=FALSE)
+# rownames(pd_filt) <- pd_filt$geo_accession
+# colnames(pd_filt) <- c("Sample_Name","Title","Source_Name","supplementary_file","supplementary_file.1","Age","Bead_Chip","Brain_Region","Sample_Group","Sex","Sample_Plate","Tissue","Sample_Well","filename","Basename","GSM","Sentrix_ID","Sentrix_Position")
+# pd_filt$MSA_Well <- NA
+# pd_filt$Pool_ID <- NA
+# pd_filt <- pd_filt[,c("Sample_Name","Sample_Well","MSA_Well","Sample_Plate","Sample_Group","Pool_ID","Sentrix_ID","Sentrix_Position","Basename","Title","Source_Name","supplementary_file","supplementary_file.1","Age","Bead_Chip","Brain_Region","Sex","Tissue","GSM","filename")]
+# #write_csv(pd_filt, file=paste0(procData,"/",controlGSE,"_pheno.csv"))
+# pd_normCBL <- pd_filt %>%
+#   filter(Sample_Group=="ND" & Brain_Region=="CBL")
+# # write_csv(pd_normCBL, file=paste0(rawdata,"/control_",controlGSE,"/idat/","Control_CBL_",controlGSE,"_pheno_Sample_Sheet.csv"))
 
-#download GEO object
-gseCtrl <- getGEO(controlGSE, GSEMatrix = TRUE)
-#get phenotype data - sample sheet
-pd = pData(gseCtrl[[1]])
-pd <- pd[,c("geo_accession","title","source_name_ch1","supplementary_file","supplementary_file.1","age:ch1","bead chip:ch1","brain region:ch1","diagnosis:ch1","gender:ch1","plate:ch1","tissue:ch1","well position:ch1")]
-pd$sampleName <- sub(".*suppl/","",pd$supplementary_file)
-pd$sampleName <- sub("_Grn.idat.gz","",pd$sampleName)
-rownames(pd) <- pd$sampleName
-pd <- as(pd,"DataFrame")
-
-#get raw data - idats, processed beta matrix, etc.
-getGEOSuppFiles(controlGSE, baseDir = data)
-
-#decompress idats
-untar(paste0(controlGSE,"/",controlGSE,"_RAW.tar"), exdir = paste0(data,"/",controlGSE,"/idat"))
-#list files
-head(list.files(paste0(controlGSE,"/idat"), pattern = "idat"))
-idatFiles <- list.files(paste0(controlGSE,"/idat"), pattern = "idat.gz$", full = TRUE)
-#decompress individual idat files
-sapply(idatFiles, gunzip, overwrite = TRUE)
-#read idats and create RGSet
-RGSet_Ctrl <- read.metharray.exp("GSE93646/idat", verbose=T)
-pData(RGSet_Ctrl) <- pd
-
-saveRDS(RGSet_Ctrl, paste0("RGSet_Newcastle_",controlGSE,".RDS"))
-        
-# Create methylset
-
-
-# Download previously processed RGSet for Newcastle data
-drive_download("RGSet_GSE93646_filt.RDS", path="../../data/processed/RGSet_GSE93646_filt.RDS", overwrite=TRUE)
-
-RGSet_New <- readRDS('../../data/processed/RGSet_GSE93646_filt.RDS')
-
-# Create methyl set
-MSet_new <- preprocessRaw(RGSet) 
-
-
+# #decompress idats
+# dir <- paste0(rawdata,"/control_",controlGSE,"/")
+# untar(paste0(dir,controlGSE,"_RAW.tar"), exdir = paste0(dir,"/idat"))
+# #list files
+# head(list.files(paste0(dir,"/idat"), pattern = "idat"))
+# idatFiles <- list.files(paste0(dir,"/idat"), pattern = "idat.gz$", full = TRUE)
+# #norm_idatFiles <- paste0(dir,"idat/",pd_normCBL$filename)
+# #decompress individual idat files only the CBL and non diseased samples
+# sapply(idatFiles, gunzip, overwrite = TRUE)
+# 
+# # Find sample sheet with phenotype info, csv file
+# targets <- read.metharray.sheet(rawdata, pattern = "Sample_Sheet.csv")
+# 
+# # Create RGChannelSet object that contains raw intensities in the green and red channels, including internal control probes
+# RGSet_Ctrl <- read.metharray.exp(targets = targets, verbose = T)
+# RGSet_Ctrl
+# saveRDS(RGSet_Ctrl, paste0(procData,"/RGSet_control_CBL_",controlGSE,".RDS"))
+# 
+# # Create methylset
+# Mset_Ctrl <- preprocessRaw(RGSet_Ctrl)
+# saveRDS(Mset_Ctrl, paste0(procData,"/MSet_control_CBL_",controlGSE,".RDS"))
+#         
+# RGSet_New <- readRDS(paste0(procData,"/RGSet_GSE93646_filt.RDS"))
+# 
+# # Create methyl set
+# MSet_new <- preprocessRaw(RGSet_New) 
+# saveRDS(MSet_new, paste0(procData,"/MSet_Newcastle_GSE93646_filt.RDS"))
+phenoCtrl <- read_csv(paste0(rawdata,"/control_",controlGSE,"/idat/","Control_CBL_",controlGSE,"_pheno_Sample_Sheet.csv"))
+phenoCtrl <- phenoCtrl[match(colnames(MSet_Ctrl),phenoCtrl$Basename),]
 ```
 
 ### Define functions
+No functions right now
 
-In this section we define any functions that we will use later in the script.
-While we could define functions later, it is nice to have them grouped together near the top of the notebook for at least a few reasons: - The first is that we will always know where to look for function definitions.
-Patterns and conventions make it easier for us to know what to expect when we come back to a file after a while away and may need to make changes - Another reason is that if the function definitions are at the top, we can use them anywhere below, without worrying about invoking a function before it is defined.
-Finally, having the functions grouped together will make it easier if we decide to move them to an external file: - If the set of functions gets large, or if we want to use some functions across multiple notebooks, we can create a separate `.R` file (or files) and then use the `source()` command to load those functions into this notebook (or others) all at once.
+```{r functions}
+# Function that takes a project name, MSet, and RGSet and creates various QC Plots and a pdf QC Report
+minfiQC <- function(proj, dir, MSet, RGSet) {
+  groups = pData(RGSet)$Sample_Group
+  print(length(groups))
+  names = pData(RGSet)$Sample_Name
+  print(length(names))
 
-In this case, we will only have one function, which will make a plot of the number of samples with mutations for each gene.
-We'll give it some options to allow filtering to a minimum number of mutated samples and highlighting particular genes of interest.
+  # QC Plot
+  qc <- getQC(MSet)
+  plotQC(qc)
 
-Importantly, we will be sure to include some comments with documentation of the arguments for the function, as well as a description of what the function will return.
+  densityPlot(MSet, sampGroups = groups)
+  densityBeanPlot(MSet, sampGroups = groups)
 
-To make these comments a bit more structured, we will use the format from the [`roxygen2`](https://roxygen2.r-lib.org/) package for these comments, which would be useful for automatically generating documentation if we were creating an R package.
-We aren't generating separate documentation files here, but it is still a nice enough convention, and RStudio has an option in the `Code` menu called `Insert Roxygen Skeleton` that can save us a bunch of typing and create the outline of what we need in a single step.
+  # Control probes plot
+  controlStripPlot(RGSet, controls="BISULFITE CONVERSION II")
 
-```{r mutation_plot_function}
-#' Plot the number of  mutations for each gene from a data frame
-#'  
-#' Filters to a cutoff and sorts genes from most to least mutated, then 
-#' creates a bar plot of the mutation counts, optionally highlighting 
-#' genes of interest.
-#'
-#' @param mutations_df A data frame with columns `Hugo_Symbol` and `mutated_samples`
-#' @param min_mutated The minimum `mutated_samples` value to include in the plot
-#'  (default: 3)
-#' @param highlight_genes A vector of genes to highlight in the plot (optional)
-#' @param highlight_title The title for the highlighted genes legend 
-#'  (default: "Gene of interest")
-#'
-#' @return A ggplot2 plot object
-#'
-plot_gene_mutations <- function(
-  mutations_df,  
-  min_mutated = 3,
-  highlight_genes = c(),
-  highlight_title = "Gene of interest"
-){
-  plot_df <- mutations_df %>%
-    filter(mutated_samples >= min_mutated) %>%
-    arrange(desc(mutated_samples)) %>%
-    # make the gene names a factor, in the order they appear after sorting
-    mutate(gene = factor(Hugo_Symbol, levels = Hugo_Symbol))
-  
-  if (length(highlight_genes) == 0){
-    # If there are no highlight genes, we don't include that in the ggplot aesthetics
-    plot_obj <- ggplot(plot_df, 
-                       aes(x = gene, 
-                           y = mutated_samples))
-  } else {
-    # There are highlight genes, so add them to the data frame
-    plot_df <- plot_df %>%
-      mutate(
-        # add a column with the highlight status, make it a factor for ordering
-        highlight = ifelse(gene %in% highlight_genes, "Yes", "No"),
-        highlight = factor(highlight, levels = c("Yes", "No"))
-      )
-    # create the plot object with colored fill
-    plot_obj <- ggplot(plot_df, 
-                       aes(x = gene, 
-                           y = mutated_samples,
-                           fill = highlight)) 
-  }
-  
-  # Add layers and formatting to the plot
-  plot_obj <- plot_obj +
-    geom_col() + 
-    labs(x = "Gene symbol",
-         y = "Mutated samples",
-         fill = highlight_title) + 
-    theme_bw() + 
-    theme(axis.text.x = element_text(angle=45,hjust=1)) + 
-    scale_fill_brewer(palette = "Set1")
-    
-  # Return the plot
-  return(plot_obj)
+  # Quality Control Report
+  reportName = paste("qcReport_",proj,".pdf",sep="")
+  qcReport(RGSet, sampNames = names,sampGroups = groups, pdf = paste0(dir,"/",reportName))
+  return(qc)
 }
 ```
 
-## Gene mutation exploration
+## QC of Healthy Brain data
+When I loaded the control data into conumee if gave an error warning that intensities are abnormally low (<5000) so I will run basic minfi QC on it to see if there are any bad samples.
+```{r qc}
+proj <- paste0("control_",controlGSE)
+#qcCtrl <- minfiQC(proj, results_dir, Mset_Ctrl,)
 
-Now that we have done all of our setup, we can move on to the bulk of the work.
+
+qc <- getQC(Mset_Ctrl)
+png(file=paste0(results_dir,"/",proj,"_plotQC.png"))
+plotQC(qc)
+dev.off()
+MSet_Ctrl <- addQC(Mset_Ctrl, qc)
+
+densityPlot(MSet_Ctrl, sampGroups = phenoCtrl$Sex)
+densityBeanPlot(MSet_Ctrl, sampGroups = phenoCtrl$Sex)
+
+# Quality Control Report
+qcReport(RGset_Ctrl, sampNames = phenoCtrl$Basename,sampGroups = phenoCtrl$Sex, pdf = paste0(results_dir,"/qcReport_",proj,".pdf"))
+```
+
+## Use Conumee to call CNVs for Newcastle
+
+Now that we have done all of our setup, we can move on to the CNV analysis using conumee
 
 ### Reading data
 
-We'll first read in the data for the two cancer types that we had defined input paths for in the setup section.
+We'll first read in the data for Newcastle and control data as methylsets. I'll also read in the pheno data for Newcastle that contains subgroups
 
 ```{r read_data}
-# read in mutation count files for plotting
-lgat_df <- readr::read_tsv(lgat_path)
-mb_df <- readr::read_tsv(mb_path)
-```
-
-We will also read in the table of genes frequently mutated in exons:
-
-```{r read_flags}
-flags_df <- readr::read_tsv(flags_path)
+MSet_New <- readRDS(paste0(procData,"/MSet_Newcastle_GSE93646_filt.RDS"))
+phenoNew <- pheno <- read_csv(paste0(procData,"/Newcastle/",phenoNewFile))
+Mset_Ctrl <- readRDS(paste0(procData,"/MSet_control_CBL_GSE134379.RDS"))
+RGset_Ctrl <- readRDS(paste0(procData,"/RGSet_control_CBL_GSE134379.RDS"))
 ```
 
 ### Quick stats
 
-Usually at this stage of an analysis we might want to get some quick statistics about the data that we just read in.
-Here we will calculate and print out the number of genes in each of the tables.
+Describe the data we have.
 
 ```{r}
-cat("LGAT mutated gene count:", nrow(lgat_df))
+cat("Newcastle data contains:", ncol(MSet_New),"medulloblastoma samples")
 cat("\n") # print return between
-cat("Medulloblastoma mutated gene count: ", nrow(mb_df))
+cat("Counts of Newcastle samples by subgroup: ")
+table(phenoNew$subgroup)
+cat("Control data contains:", ncol(Mset_Ctrl), "samples")
 ```
 
-**A note on code chunk names:** 
-You might have noticed that in most of the previous code chunks, I included some text in the `{r}` brackets on the first line of the chunk, which serves as the name of the chunk.
-The use of these names is a bit controversial among members of the Data Lab.
-Some of us like them for the clarity and the fact that they allow easy navigation in RStudio.
-Others find that they get out of sync with the code inside them and can be more trouble than they are worth.
-In particular, no two chunks can have the same name, so sometimes duplicating or splitting a chunk can accidentally create a notebook that won't render properly.
-Here we are using names for chunks with defined purpose, but not for the more exploratory, iterative chunks in this section and the next, but your preferred method is up to you!
+### Create annotation object
 
-
-### Make plots
-
-We'll start by using the most basic version of the plotting function we defined earlier, with no highlighting, using the LGAT data:
-
-```{r}
-plot_gene_mutations(lgat_df)
+```{r annot}
+data(exclude_regions)
+data(detail_regions)
+head(detail_regions, n = 2)
+anno <- CNV.create_anno(array_type = "450k", exclude_regions = exclude_regions, detail_regions = detail_regions)
+anno
 ```
 
-We do want to make sure we highlight any frequently mutated genes, so let's add that argument, highlighting the genes from the FLAGS data set (stored in `flags_df`):
+### Combine intensity values
 
-```{r}
-plot_gene_mutations(lgat_df, 
-                    highlight_genes = flags_df$gene, 
-                    highlight_title = "Frequently mutated")
+```{r combineintensity}
+#data(tcgaBRCA.sentrix2name)  # TCGA sample IDs are supplied with the conumee package
+#sampleNames(MsetTCGA) <- tcgaBRCA.sentrix2name[sampleNames(MsetTCGA)]
+Newcastle.data <- CNV.load(MSet_New)
+controls.data <- CNV.load(Mset_Ctrl)
+names(Newcastle.data)
+## [1] "TCGA-AR-A1AU-01A-11D-A12R-05" "TCGA-AR-A1AY-01A-21D-A12R-05"
+Newcastle.data
+## CNV data object
+##    created   : 
+##   @intensity : available (2 samples, 485512 probes)
+
+# minfi.data <- CNV.load(MsetEx)
+# minfi.controls <- pData(MsetEx)$status == "normal"
+# controls.data <- CNV.load(MsetControls)
+```
+### Main CNV Analysis
+
+```{r cnv}
+x <- CNV.fit(Newcastle.data["GSM2459851_9761749073_R04C01"], controls.data, anno)
+# y <- CNV.fit(tcga.data["TCGA-AR-A1AU-01A-11D-A12R-05"], controls.data, anno)  # CopyNumber450kData package is deprecated
+# z <- CNV.fit(tcga.data["TCGA-AR-A1AY-01A-21D-A12R-05"], controls.data, anno)
+# y <- CNV.fit(tcga.data["TCGA-AR-A1AU-01A-11D-A12R-05"], minfi.data[minfi.controls], anno)  # minfiData control samples
+# z <- CNV.fit(tcga.data["TCGA-AR-A1AY-01A-21D-A12R-05"], minfi.data[minfi.controls], anno)
+
+x <- CNV.bin(x)
+x <- CNV.detail(x)
+x <- CNV.segment(x)
+
+# y <- CNV.segment(CNV.detail(CNV.bin(y)))
+# z <- CNV.segment(CNV.detail(CNV.bin(z)))
+
+x
+
 ```
 
-If we want, we can save the plot object we made into its own variable, and since it is a ggplot object, we can also add additional content or formatting that the function might not have supported.
+### Output plots and text files
 
-```{r}
-lgat_plot <- plot_gene_mutations(lgat_df, 
-                                 highlight_genes = flags_df$gene, 
-                                 highlight_title = "Frequently mutated")
+```{r output}
+#pdf("~/conumee_analysis/CNVplots.pdf", height = 9, width = 18)
+CNV.genomeplot(x)
+CNV.genomeplot(x, chr = "chr6")
+CNV.genomeplot(x, chr = "chr10")
+CNV.detailplot(x, name = "PTEN")
+CNV.detailplot_wrap(x)
+#dev.off()
 
-# add a title to the plot
-lgat_plot <- lgat_plot + labs(title = "LGAT mutation counts")
+head(CNV.write(x, what = "segments"), n = 5)
 
-# view the plot
-lgat_plot
-```
 
-Now let's repeat that for the medulloblastoma data.
-
-```{r}
-mb_plot <- plot_gene_mutations(mb_df, 
-                               highlight_genes = flags_df$gene, 
-                               highlight_title = "Frequently mutated")
-
-# add a title to the plot
-mb_plot <- mb_plot + labs(title = "Medulloblastoma mutation counts")
-
-# view the plot
-mb_plot
-```
-
-That plot seems to be a bit cluttered, so we will make the x axis labels a bit smaller:
-
-```{r}
-mb_plot <- mb_plot + theme(axis.text.x = element_text(size = 7))
-
-mb_plot
 ```
 
 ### Saving plots
 
-If we are happy with the plots, we can save them.
-We do want to be sure to specify the width and height of the saved plots, as that can sometimes change unpredictably depending on the R environment.
-
-We didn't define the output plot file names at the top, just the directory, so we will create the file names now (using `file.path()` again!).
-
-In most cases, defining outputs here in the notebook will be just fine, but if the output here were likely to be feeding into another analysis, I would probably want to be more careful and define all the outputs at the top of the notebook.
-
 ```{r save_plots}
-ggsave(
-  file.path(plots_dir, "LGAT_mutation-counts.png"), 
-  lgat_plot,
-  width = 7, 
-  height = 7
-)
-ggsave(
-  file.path(plots_dir, "Medulloblastoma_mutation-counts.png"), 
-  mb_plot,
-  width = 7,
-  height = 7
-)
+# ggsave(
+#   file.path(plots_dir, "LGAT_mutation-counts.png"), 
+#   lgat_plot,
+#   width = 7, 
+#   height = 7
+# )
+# ggsave(
+#   file.path(plots_dir, "Medulloblastoma_mutation-counts.png"), 
+#   mb_plot,
+#   width = 7,
+#   height = 7
+# )
 ```
 
 

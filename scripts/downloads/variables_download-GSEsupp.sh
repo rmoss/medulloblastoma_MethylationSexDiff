@@ -13,7 +13,7 @@ GSESUPP_URL="https://www.ncbi.nlm.nih.gov/geo/download/?acc=GSE134379&format=fil
 
 # Define and create destination directory for FASTQ files to live in
 #FASTQ_DEST="../data/raw/fastq/$STUDY_ID/"
-IDAT_DEST="../data/raw/control_$STUDY_ID/"
+IDAT_DEST="../../data/raw/control_$STUDY_ID/"
 mkdir -p $IDAT_DEST 
 
 ##### Process the R1 file #####
