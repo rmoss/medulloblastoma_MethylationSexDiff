@@ -6,8 +6,6 @@ library(conumee)
 library(GEOquery)
 library(tidyverse)
 library(readr)
-library(filesstrings)
-library(gridExtra)
 library(optparse)
 
 # Details of list of options for the script
@@ -62,38 +60,37 @@ anno
 
 # Break into subgroup
 pheno_sub <- filter(pheno, subgroup==opt$subgroup)
-MSet_sub <- Mset[,pheno_sub$geo_accession]
+MSet_sub <- MSet[,pheno_sub$geo_accession]
 
 ### Combine intensity values
 sample.data <- CNV.load(MSet_sub)
 controls.data <- CNV.load(Mset_Ctrl)
-names(sample.data)
+#names(sample.data)
 sample.data
 
 
 
 ### Now loop through all the samples and save plot and table
 
-datalist <- list()
-
-for (samp in names(sample.data)){
+dlist <- list()
+s <- names(sample.data)
+for (samp in s){
   x <- CNV.fit(sample.data[samp], controls.data, anno)
   x <- CNV.bin(x)
   x <- CNV.detail(x)
   x <- CNV.segment(x)
-  CNV.genomeplot(x)
-  plist[[samp]] <- CNV.genomeplot(x)
-  pdf(file=paste0(opt$outDir,"/",opt$subgroup,"_" sprintf("p%s.pdf", samp)),
-      width = 6, height = 4, onefile = T)
+  pdf(file=paste0(opt$outDir,"/plots/",opt$prefix,"_",opt$subgroup,"_",sprintf("p%s.pdf", samp)),
+     width = 6, height = 4, onefile = T)
   CNV.genomeplot(x)
   dev.off()
   dat <- CNV.write(x, what = "segments")
   dat$samp <- samp
-  datalist[[samp]] <- data
+  dat$subgroup <- opt$subgroup 
+  dlist[[samp]] <- dat
 }
 
-big_data <- do.call(rbind, datalist)
-write_csv(big_data, file=paste0(opt$outDir,"/",opt$prefix,"_",opt$subgroup,"_CNVsegments.csv"))
+big_data <- do.call(rbind, dlist)
+write_csv(big_data, file=paste0(opt$outDir,"/tables/",opt$prefix,"_",opt$subgroup,"_CNVsegments.csv"))
 
 
 ## Session information
