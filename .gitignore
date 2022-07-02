@@ -42,6 +42,7 @@ vignettes/*.pdf
 data/processed
 data/raw
 results/
+analyses/CNV_Conumee/log
 
 # don't sync .rds files
 *.RDS
