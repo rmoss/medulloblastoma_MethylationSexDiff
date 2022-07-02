@@ -29,6 +29,7 @@ library(GEOquery)
 library(tidyverse)
 library(readr)
 library(filesstrings)
+library(gridExtra)
 ```
 
 ### Specify files and paths
@@ -83,11 +84,11 @@ if (!dir.exists(results_dir)){
 # colnames(pd_filt) <- c("Sample_Name","Title","Source_Name","supplementary_file","supplementary_file.1","Age","Bead_Chip","Brain_Region","Sample_Group","Sex","Sample_Plate","Tissue","Sample_Well","filename","Basename","GSM","Sentrix_ID","Sentrix_Position")
 # pd_filt$MSA_Well <- NA
 # pd_filt$Pool_ID <- NA
-# pd_filt <- pd_filt[,c("Sample_Name","Sample_Well","MSA_Well","Sample_Plate","Sample_Group","Pool_ID","Sentrix_ID","Sentrix_Position","Basename","Title","Source_Name","supplementary_file","supplementary_file.1","Age","Bead_Chip","Brain_Region","Sex","Tissue","GSM","filename")]
-# #write_csv(pd_filt, file=paste0(procData,"/",controlGSE,"_pheno.csv"))
+# pd_filt <- pd_filt[,c("Sample_Name","Sample_Well","MSA_Well","Sample_Plate","Sample_Group","Pool_ID","Sentrix_ID","Sentrix_Position","Basename","Title","Source_Name","supplementary_file","supplementary_file.1","Age","Bead_Chip","Brain_Region","Sex","Tissue","Basename","GSM","filename")]
+# write_csv(pd_filt, file=paste0(procData,"/",controlGSE,"_pheno.csv"))
 # pd_normCBL <- pd_filt %>%
 #   filter(Sample_Group=="ND" & Brain_Region=="CBL")
-# # write_csv(pd_normCBL, file=paste0(rawdata,"/control_",controlGSE,"/idat/","Control_CBL_",controlGSE,"_pheno_Sample_Sheet.csv"))
+# write_csv(pd_normCBL, file=paste0(procData,"/Control_CBL_",controlGSE,"_pheno_Sample_Sheet.csv"))
 
 # #decompress idats
 # dir <- paste0(rawdata,"/control_",controlGSE,"/")
@@ -116,8 +117,7 @@ if (!dir.exists(results_dir)){
 # # Create methyl set
 # MSet_new <- preprocessRaw(RGSet_New) 
 # saveRDS(MSet_new, paste0(procData,"/MSet_Newcastle_GSE93646_filt.RDS"))
-phenoCtrl <- read_csv(paste0(rawdata,"/control_",controlGSE,"/idat/","Control_CBL_",controlGSE,"_pheno_Sample_Sheet.csv"))
-phenoCtrl <- phenoCtrl[match(colnames(MSet_Ctrl),phenoCtrl$Basename),]
+
 ```
 
 ### Define functions
@@ -148,6 +148,19 @@ minfiQC <- function(proj, dir, MSet, RGSet) {
 }
 ```
 
+### Reading data
+
+We'll first read in the data for Newcastle and control data as methylsets. I'll also read in the pheno data for Newcastle that contains subgroups
+
+```{r read_data}
+MSet_New <- readRDS(paste0(procData,"/MSet_Newcastle_GSE93646_filt.RDS"))
+phenoNew <- pheno <- read_csv(paste0(procData,"/Newcastle/",phenoNewFile))
+Mset_Ctrl <- readRDS(paste0(procData,"/MSet_control_CBL_GSE134379.RDS"))
+# RGset_Ctrl <- readRDS(paste0(procData,"/RGSet_control_CBL_GSE134379.RDS"))
+phenoCtrl <- read_csv(paste0(rawdata,"/control_",controlGSE,"/idat/","Control_CBL_",controlGSE,"_pheno_Sample_Sheet.csv"))
+phenoCtrl <- phenoCtrl[match(colnames(Mset_Ctrl),phenoCtrl$Basename),]
+```
+
 ## QC of Healthy Brain data
 When I loaded the control data into conumee if gave an error warning that intensities are abnormally low (<5000) so I will run basic minfi QC on it to see if there are any bad samples.
 ```{r qc}
@@ -171,17 +184,6 @@ qcReport(RGset_Ctrl, sampNames = phenoCtrl$Basename,sampGroups = phenoCtrl$Sex, 
 ## Use Conumee to call CNVs for Newcastle
 
 Now that we have done all of our setup, we can move on to the CNV analysis using conumee
-
-### Reading data
-
-We'll first read in the data for Newcastle and control data as methylsets. I'll also read in the pheno data for Newcastle that contains subgroups
-
-```{r read_data}
-MSet_New <- readRDS(paste0(procData,"/MSet_Newcastle_GSE93646_filt.RDS"))
-phenoNew <- pheno <- read_csv(paste0(procData,"/Newcastle/",phenoNewFile))
-Mset_Ctrl <- readRDS(paste0(procData,"/MSet_control_CBL_GSE134379.RDS"))
-RGset_Ctrl <- readRDS(paste0(procData,"/RGSet_control_CBL_GSE134379.RDS"))
-```
 
 ### Quick stats
 
@@ -237,7 +239,7 @@ x <- CNV.detail(x)
 x <- CNV.segment(x)
 
 # y <- CNV.segment(CNV.detail(CNV.bin(y)))
-# z <- CNV.segment(CNV.detail(CNV.bin(z)))
+# z <- CNV.segment(CNV.detail(CNV.bin(z))
 
 x
 
@@ -255,6 +257,47 @@ CNV.detailplot_wrap(x)
 #dev.off()
 
 head(CNV.write(x, what = "segments"), n = 5)
+
+
+```
+
+### Now loop through all the samples and save plot and table
+
+```{r}
+datalist <- list()
+s <- head(names(Newcastle.data))
+for (samp in s){
+  x <- CNV.fit(Newcastle.data[samp], controls.data, anno)
+  x <- CNV.bin(x)
+  x <- CNV.detail(x)
+  x <- CNV.segment(x)
+  pdf(paste0(results_dir,"/","Newcastle_test_",samp,"_CNV.pdf"),
+      width = 6, height = 4, onefile = T)
+  CNV.genomeplot(x)
+  dev.off()
+  dat <- CNV.write(x, what = "segments")
+  dat$samp <- samp
+  datalist[[samp]] <- data
+}
+
+big_data <- do.call(rbind, datalist)
+write_csv(big_data, file=paste0(results_dir,"/Newcastle_CNVsegments.csv"))
+pdf(file=paste0(results_dir,"/allCNVgenomeplot.pdf"))
+do.call(grid.arrange, c(plist, ncol=5))
+dev.off()
+plist <- list()
+
+for (samp in rownames(Newcastle.data)){
+  x <- CNV.fit(Newcastle.data["GSM2459851_9761749073_R04C01"], controls.data, anno)
+  x <- CNV.bin(x)
+  x <- CNV.detail(x)
+  x <- CNV.segment(x)
+  CNV.genomeplot(x)
+  plist[[samp]] <- CNV.genomeplot(x)
+  ggsave(
+    files.path(results_dir, )
+  )
+}
 
 
 ```
