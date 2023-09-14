@@ -47,3 +47,7 @@ analyses/CNV_Conumee/log
 # don't sync .rds files
 *.RDS
 *.rds
+
+# don't sync bed output files
+*.bed
+*.html
