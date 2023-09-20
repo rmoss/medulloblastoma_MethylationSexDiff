@@ -20,6 +20,6 @@ cd /home/spectorl/moss0134/projects/research/medulloblastoma_MethylationSexDiff/
 module load R/4.0.4
 
 echo "starting new DMP script"
-# Rscript --vanilla DMPbySex.R -g $CavDir/GRset.flt.rds -f $CavDir/phenoCav.csv -p Cavalli -n 500 -o $CavDir
+Rscript --vanilla subtype_DMPbySex.R -g $CavDir/GRset.flt.rds -f $CavDir/pheno_CavalliCombined_subgroupandtype_filtered.csv  -p Cavalli_SHH -n 500 -o $CavDir/subtype_DMP
 
-Rscript --vanilla DMPbySex.R -g $NewDir/GRSet_Newcastle_GSE93646_filtMBonly.RDS -f $NewDir/Newcastle_pheno_v3.csv -p Newcastle -n 500 -o $NewDir
+#Rscript --vanilla DMPbySex.R -g $NewDir/GRSet_Newcastle_GSE93646_filtMBonly.RDS -f $NewDir/Newcastle_pheno_v3.csv -p Newcastle -n 500 -o $NewDir/subtype_DMP

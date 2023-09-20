@@ -14,11 +14,12 @@ CavDir="/home/spectorl/moss0134/projects/research/MBSexDiff/data/Cavalli"
 NewDir="/home/spectorl/moss0134/projects/research/MBSexDiff/data/Newcastle"
 HeidDir="/home/spectorl/moss0134/projects/research/MBSexDiff/data/Hovestadt"
 
-cd /home/spectorl/moss0134/projects/research/MBSexDiff/scripts
+cd /home/spectorl/moss0134/projects/research/medulloblastoma_MethylationSexDiff/analyses/DMR
 
 
 module load R/4.0.4
 
-#Rscript --vanilla DMRbySex.R -g $CavDir/GRset.flt.rds -f $CavDir/phenoCav.csv -p Cavalli -n 500 -o $CavDir
+echo "begin new DMR script"
+# Rscript --vanilla DMRbySex_v2.R -g $CavDir/GRset.flt.rds -f $CavDir/phenoCav.csv -p Cavalli -n 500 -o $CavDir
 
 Rscript --vanilla DMRbySex.R -g $NewDir/GRSet_Newcastle_GSE93646_filtMBonly.RDS -f $NewDir/Newcastle_pheno_v3.csv -p Newcastle -n 500 -o $NewDir

@@ -42,7 +42,11 @@ vignettes/*.pdf
 data/processed
 data/raw
 results/
+
+# log files should not be synced
 analyses/CNV_Conumee/log
+*.out
+*.err
 
 # don't sync .rds files
 *.RDS

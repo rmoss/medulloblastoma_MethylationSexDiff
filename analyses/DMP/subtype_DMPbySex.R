@@ -31,8 +31,8 @@ cut <- 0.05
 # number of permutations
 num <- opt$number
 
-dmpFinder_custom <- function(dat, pheno, cov1, cov2, pre, dir) {
-    design <- model.matrix(~0 + pheno + cov1 + cov2)
+dmpFinder_custom <- function(dat, pheno, cov1, cov2, pre, dir, lcov2) {
+    design <- if(lcov2) {design<-d1 <- model.matrix(~0 + pheno + cov1 + cov2)} else {design <-  d2 <- model.matrix(~0 + pheno + cov1)}
     fit <- lmFit(dat, design)
     contrasts <- makeContrasts(phenoM-phenoF, levels=colnames(design))
     fitC <- contrasts.fit(fit,contrasts)
@@ -63,109 +63,30 @@ dmpFinder_custom <- function(dat, pheno, cov1, cov2, pre, dir) {
     # Return the DMRs with full results including annotation, p-value, and delta beta
     return(full_predSex)
 }
-    
-
-# dmpFinderAlt <- function(dat, pheno, cov, type = c("categorical", "continuous"),
-#                       qCutoff = 1, shrinkVar = FALSE) {
-#     # Check inputs
-#     if (is(dat, "MethylSet")) {
-#         .isMatrixBackedOrStop(dat, "dmpFinder")
-#         M <- getM(dat)
-#     } else if (is(dat, "DelayedMatrix")) {
-#         stop("This function does not yet support DelayedArray objects")
-#     } else {
-#         stopifnot(is.numeric(dat))
-#         M <- dat
-#         if (is.vector(M)) M <- matrix(M, nrow = 1)
-#     }
-#     n <- length(pheno)
-#     if (n != ncol(M)) stop("length of pheno does not equal number of samples")
-
-#     if (type == "categorical") {
-#         pheno <- factor(as.character(pheno))
-#         design <- model.matrix(~0 + pheno + cov)
-#         print(design)
-#         fit <- lmFit(M, design)
-#         if (shrinkVar) {
-#             fit <- contrasts.fit(fit, contrasts(pheno))
-#             fit <- eBayes(fit)
-#             tab <- data.frame(
-#                 intercept = fit$coefficients[, 1],
-#                 f = fit[["F"]],
-#                 pval = fit[["F.p.value"]])
-#         } else {
-#             fit1 <- lmFit(M)
-#             RSS1 <- rowSums2((M - fitted(fit1))^2)
-#             RSS <- rowSums2((M - fitted(fit))^2)
-#             df1 <- length(levels(pheno)) - 1
-#             df2 <- n - length(levels(pheno))
-#             Fstat <- ((RSS1 - RSS)/df1)/(RSS/df2)
-#             if (df2 > 1e+06) {
-#                 F.p.value <- pchisq(df1 * Fstat, df1, lower.tail = FALSE)
-#             }
-#             else {
-#                 F.p.value <- pf(Fstat, df1, df2, lower.tail = FALSE)
-#             }
-#             tab <- data.frame(
-#                 intercept = fit$coefficients[, 1],
-#                 f = Fstat,
-#                 pval = F.p.value)
-#         }
-#     }
-#     else if (type == "continuous") {
-#         design <- model.matrix(~0 + pheno + cov)
-#         fit <- lmFit(M, design)
-#         if (shrinkVar) {
-#             fit <- eBayes(fit)
-#             sigma <- sqrt(fit$s2.post)
-#             df <- fit$df.prior + fit$df.residual
-#         } else {
-#             sigma <- fit$sigma
-#             df <- fit$df.residual
-#         }
-#         coef <- fit$coefficients
-#         if (is.vector(coef)) coef <- matrix(coef, ncol = 2)
-#         stdev <- fit$stdev.unscaled
-#         if (is.vector(stdev)) stdev <- matrix(stdev, ncol = 2)
-#         t <- coef[, 2] / (stdev[, 2] * sigma)
-#         pval <- 2 * pt(abs(t), df = df, lower.tail = FALSE)
-#         tab <- data.frame(
-#             intercept = coef[, 1],
-#             beta = coef[, 2],
-#             t = t,
-#             pval = pval)
-#     }
-#     p0 <- pi0.est(tab$pval[!is.na(tab$pval)])$p0
-#     tab$qval <- qvalue.cal(tab$pval, p0)
-#     if (qCutoff < 1) tab <- tab[tab$qval <= qCutoff,]
-#     o <- order(tab$pval)
-#     tab <- tab[o, ]
-#     ## tab <- cbind(tab, annotate(rownames(tab)))
-#     if (nrow(tab) == 0) {
-#         message(sprintf("No significant DMPs at FDR cutoff of %s.", qCutoff))
-#     }
-#     tab
-# }
-
+# read in methylation data and pheno file
 GRSet <- readRDS(opt$grset)
 pheno <- read_csv(opt$filename)
-
+# remove samples that don't have age data
 keep <- !is.na(pheno$age)
 pheno_filt <- pheno[keep,]
+
+# filter for just those in SHH subgroup
+pheno_filt <- filter(pheno_filt, subgroup=="SHH")
 GRSet_filt <- GRSet[,pheno_filt$geo_accession]
 
 pheno_sex <- factor(pheno_filt$sex, levels=c("M","F"))
 pheno_age <- pheno_filt$age
 pheno_agecat <- factor(pheno_filt$agecat)
 p_subgroup <- factor(pheno_filt$subgroup)
+p_subtype <- factor(pheno_filt$subtype)
 
 beta <- getBeta(GRSet_filt)
 # dmp <- dmpFinder_custom(beta, pheno=pheno_sex, type="categorical")
 # saveRDS(dmp, paste0(opt$outDir, "/", opt$prefix,"_DMPs_sexdiff.rds", sep=""))
 # dmpAgeAdj <- dmpFinder_custom(beta, pheno=pheno_sex, cov=pheno_age, pre=paste0(opt$prefix,"_ageadj"),dir=opt$outDir)
 # saveRDS(dmpAgeAdj, paste0(opt$outDir, "/", opt$prefix,"_DMPs_AgeAdj_sexdiff.rds", sep=""))
-dmpAgeCatAdj <- dmpFinder_custom(beta, pheno=pheno_sex, cov1=pheno_agecat, cov2=p_subgroup, pre=paste0(opt$prefix,"_agecat_subgroup_adj"), dir=opt$outDir)
-saveRDS(dmpAgeCatAdj, paste0(opt$outDir, "/", opt$prefix,"_DMPs_AgeCat_Subgroup_Adj_sexdiff.rds", sep=""))
+dmpAgeCatAdj <- dmpFinder_custom(beta, pheno=pheno_sex, cov1=pheno_agecat, cov2=p_subtype, pre=paste0(opt$prefix,"_agecat_subtype_adj"), dir=opt$outDir, lcov2=TRUE)
+saveRDS(dmpAgeCatAdj, paste0(opt$outDir, "/", opt$prefix,"_DMPs_AgeCat_Subtype_Adj_sexdiff.rds", sep=""))
 
 
 #' Title
@@ -276,20 +197,20 @@ saveRDS(dmpAgeCatAdj, paste0(opt$outDir, "/", opt$prefix,"_DMPs_AgeCat_Subgroup_
 # designMatrix2 <- model.matrix(~ pheno_sex + pheno_agecat)
 # dmrs_all_agecat <- findDMRs(GRSet_filt, designMatrix2, cut, num, opt$outDir, paste0(opt$prefix,"_agecatadj"), pheno_filt)
 
-# Break dataset into subgroups and analyze for DMRs within each group
+# Break dataset into SHH subtypes and analyze for DMPs within each group
 
-# subgroups <- c("SHH","WNT","Group3","Group4")
+sub <- c("SHH_alpha","SHH_beta","SHH_gamma","SHH_delta")
 
-# lsDMPsSubAge <- list()
-# lsDMPsSubAgeCat <- list()
-# for (sub in subgroups){
-#   pheno_sub <- filter(pheno_filt, subgroup==sub)
-#   GRSet_sub <- GRSet_filt[,pheno_sub$geo_accession]
-#   beta <- getBeta(GRSet_sub)
-#   prefix <- paste0(opt$prefix, "_",sub)
-#   pheno_sex <- factor(pheno_sub$sex, levels=c("M","F"))
-#   pheno_age <- pheno_sub$age
-#   pheno_agecat <- factor(pheno_sub$agecat)
-#   lsDMPsSubAge[[sub]] <- dmpFinder_custom(beta, pheno=pheno_sex, cov=pheno_age, pre=paste0(prefix,"_ageadj"), dir=opt$outDir)
-#   lsDMPsSubAgeCat[[sub]] <- dmpFinder_custom(beta, pheno=pheno_sex, cov=pheno_agecat, pre=paste0(prefix,"_ageacatadj"),dir=opt$outDir)
-# }
+#lsDMPsSubAge <- list()
+lsDMPsSubAgeCat <- list()
+for (s in sub){
+  pheno_sub <- filter(pheno_filt, subtype==s)
+  GRSet_sub <- GRSet_filt[,pheno_sub$geo_accession]
+  beta <- getBeta(GRSet_sub)
+  prefix <- paste0(opt$prefix, "_",s)
+  pheno_sex <- factor(pheno_sub$sex, levels=c("M","F"))
+  pheno_age <- pheno_sub$age
+  pheno_agecat <- factor(pheno_sub$agecat)
+  #lsDMPsSubAge[[sub]] <- dmpFinder_custom(beta, pheno=pheno_sex, cov=pheno_age, pre=paste0(prefix,"_ageadj"), dir=opt$outDir)
+  lsDMPsSubAgeCat[[s]] <- dmpFinder_custom(beta, pheno=pheno_sex, cov1=pheno_agecat, cov2=NA, pre=paste0(prefix,"_ageacatadj"),dir=opt$outDir, lcov2=FALSE)
+}
