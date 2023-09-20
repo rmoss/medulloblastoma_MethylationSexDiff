@@ -1,0 +1,480 @@
+---
+title: "MB Sex Differences in DNA Methylation in subgroups - CNV boxplots by sex"
+author: "Rachel Moss"
+date: "Aug 29, 2022"
+output:
+  html_document:
+    toc: yes
+    df_print: paged
+  html_notebook:
+    toc: yes
+    toc_float: yes
+editor_options:
+  chunk_output_type: inline
+---
+
+## Introduction
+
+I will use UpSetR package to compare the Cavalli and Newcastle DMPs for each subgroup to the DMPs in healthy brain from  [GSE15745](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE15745)
+in an upset plot. 
+
+## Setup
+
+### Load packages
+
+```{r packages, message=FALSE, results=FALSE, warning=FALSE}
+library(IlluminaHumanMethylation450kanno.ilmn12.hg19)
+library(tidyverse)
+library(readr)
+library(ggplot2)
+library(ggpubr)
+library(rstatix)
+library(openxlsx)
+```
+
+```{r herewego}
+ann450k <- getAnnotation(IlluminaHumanMethylation450kanno.ilmn12.hg19)
+ann450k_df <- as.data.frame(ann450k) %>%
+  rownames_to_column(var="probeID")
+
+
+```
+
+### Specify files and paths
+
+These DMP files for each subgroup for Cavalli and Newcastle are stored on a shared [google drive](https://drive.google.com/drive/folders/1MtKqg-v7USwvqbHVqPo_RiIwcu5O9nkb?usp=sharing).
+The healthy brain DMPs are also on a shared [google drive](https://drive.google.com/drive/folders/1so_iPCp3Q4MlN-iAuQtimCt5-IzDYpDs?usp=sharing)
+
+```{r inputs}
+# Set the directory where the processed data will be kept
+dir <- "/Users/moss0134/Google Drive/Research/SexDiffMedullo/Analysis_RMM_new/Results"
+cavDMPDir <- "/Users/moss0134/Google Drive/Research/SexDiffMedullo/Analysis_RMM_new/Results/Cavalli"
+newDMPDir <- "/Users/moss0134/Google Drive/Research/SexDiffMedullo/Analysis_RMM_new/Results/Newcastle"
+phenoDir <- "/Users/moss0134/Google Drive/Research/SexDiffMedullo/Analysis_RMM_new/data/"
+
+# File paths to the DMP files for each subgroup
+cavALL_path <- file.path(cavDMPDir, "Cavalli_agecatadj_dmp_MethFullResults.csv")
+cavSHH_path <- file.path(cavDMPDir, "Cavalli_SHH_ageacatadj_dmp_MethFullResults.csv")
+cavWNT_path <- file.path(cavDMPDir, "Cavalli_WNT_ageacatadj_dmp_MethFullResults.csv")
+cavG3_path <- file.path(cavDMPDir, "Cavalli_Group3_ageacatadj_dmp_MethFullResults.csv")
+cavG4_path <- file.path(cavDMPDir, "Cavalli_Group4_ageacatadj_dmp_MethFullResults.csv")
+newALL_path <- file.path(newDMPDir, "Newcastle_agecatadj_dmp_MethFullResults.csv")
+newSHH_path <- file.path(newDMPDir, "Newcastle_SHH_ageacatadj_dmp_MethFullResults.csv")
+newWNT_path <- file.path(newDMPDir, "Newcastle_WNT_ageacatadj_dmp_MethFullResults.csv")
+newG3_path <- file.path(newDMPDir, "Newcastle_Group3_ageacatadj_dmp_MethFullResults.csv")
+newG4_path <- file.path(newDMPDir, "Newcastle_Group4_ageacatadj_dmp_MethFullResults.csv")
+
+# Set the directory where the processed data will be kept
+dir <- "/Users/moss0134/Google Drive/Research/SexDiffMedullo/Analysis_RMM_new/Results"
+dir2 <- "/Users/moss0134/Google Drive/Research/SexDiffMedullo/Analysis_RMM_new/Results/tables"
+cavDMPDir <- "/Users/moss0134/Google Drive/Research/SexDiffMedullo/Analysis_RMM_new/Results/Cavalli"
+newDMPDir <- "/Users/moss0134/Google Drive/Research/SexDiffMedullo/Analysis_RMM_new/Results/Newcastle"
+
+# File paths to the DMP files for each subgroup
+cavALL_path <- file.path(cavDMPDir, "Cavalli_agecatadj_dmp_MethFullResults.csv")
+cavSHH_path <- file.path(cavDMPDir, "Cavalli_SHH_ageacatadj_dmp_MethFullResults.csv")
+cavWNT_path <- file.path(cavDMPDir, "Cavalli_WNT_ageacatadj_dmp_MethFullResults.csv")
+cavG3_path <- file.path(cavDMPDir, "Cavalli_Group3_ageacatadj_dmp_MethFullResults.csv")
+cavG4_path <- file.path(cavDMPDir, "Cavalli_Group4_ageacatadj_dmp_MethFullResults.csv")
+newALL_path <- file.path(newDMPDir, "Newcastle_agecatadj_dmp_MethFullResults.csv")
+newSHH_path <- file.path(newDMPDir, "Newcastle_SHH_ageacatadj_dmp_MethFullResults.csv")
+newWNT_path <- file.path(newDMPDir, "Newcastle_WNT_ageacatadj_dmp_MethFullResults.csv")
+newG3_path <- file.path(newDMPDir, "Newcastle_Group3_ageacatadj_dmp_MethFullResults.csv")
+newG4_path <- file.path(newDMPDir, "Newcastle_Group4_ageacatadj_dmp_MethFullResults.csv")
+
+# File paths to the final DMP files for each subgroup
+cavSHH_path2 <- file.path(dir2, "Cavalli_SHH_DMPFullResults_v2.csv")
+cavWNT_path2 <- file.path(dir2, "Cavalli_WNT_DMPFullResults_v2.csv")
+cavG3_path2 <- file.path(dir2, "Cavalli_Group3_DMPFullResults_v2.csv")
+cavG4_path2 <- file.path(dir2, "Cavalli_Group4_DMPFullResults_v2.csv")
+
+newSHH_path2 <- file.path(dir2, "Newcastle_SHH_DMPFullResults_v2.csv")
+newWNT_path2 <- file.path(dir2, "Newcastle_WNT_DMPFullResults_v2.csv")
+newG3_path2 <- file.path(dir2, "Newcastle_Group3_DMPFullResults_v2.csv")
+newG4_path2 <- file.path(dir2, "Newcastle_Group4_DMPFullResults_v2.csv")
+
+# # Set the directory where the counts files are found
+# counts_dir <- here::here("analyses", "mutation_counts")
+# 
+# # File paths to the counts files for LGAT and medulloblastoma
+# lgat_path <- file.path(counts_dir, "LGAT_gene-mutations.tsv")
+# mb_path <- file.path(counts_dir, "Medulloblastoma_gene-mutations.tsv")
+# 
+# # Reference directory & FLAGS (frequently mutated genes)
+# ref_dir <- here::here("data", "reference")
+# flags_path <- file.path(ref_dir, "FLAGS.txt")
+```
+
+Outputs
+```{r outputs}
+# set the directory to save output plots
+results_dir <- "/Users/moss0134/Google Drive/Research/SexDiffMedullo/Analysis_RMM_new/Results/CNVplots"
+
+# create the results directory if it does not exist
+if (!dir.exists(results_dir)){
+  dir.create(results_dir, recursive = TRUE)
+}
+```
+
+### Download Data
+Data previously downloaded
+
+```{r downloads}
+
+```
+
+### Define functions
+No functions right now
+
+```{r functions}
+
+```
+
+### Reading data
+
+We'll first read in the DMP files data for Cavalli, Newcastle, and healthy brain as tables. For the upset plot, I will have to use the gene names rather than the 450K probeID because different arrays were used. So I clean up the gene names in the DMP files that have duplicates in entries separated by ; because of multiple transcripts. I will also remove any duplicate genes due to probes associated to the same gene. Finally, I'll filter the healthy brain data to those DMPs with adjusted q-val < 0.05 and also removed duplicate gene names.
+
+```{r read_data}
+
+d <- c(cavSHH_path, cavWNT_path,cavG3_path,cavG4_path,newSHH_path, newWNT_path,newG3_path,newG4_path)
+readCounts <- function(name){
+  print(name)
+  tmp <- read_csv(name)
+  # colnames(tmp)[7] <- "counts"
+  # colnames(tmp)[1] <- "locID"
+  #tmp <- filter(tmp, Chr %in% c(1:22, "X","Y"))
+  group <- str_remove(name, "/Users/moss0134/Google Drive/Research/SexDiffMedullo/Analysis_RMM_new/Results/")
+  print(group)
+  group <- str_remove(group, "_ageacatadj_dmp_MethFullResults.csv") 
+  print(group)
+  tmp$group <- group
+  # tmp <- tmp[,c("locID","counts","sampleID")]
+  tmp
+}
+all <- map_dfr(d, readCounts)
+
+all <- left_join(all, ann450k_df)
+all$start <- all$pos-1
+all <- all %>% 
+  separate(group, sep="/", c("cohort","group")) %>%
+  separate(group, sep="_", c("cohortrep","subgroup"))
+all_bed <- all[,c("chr","start","pos","probeID","cohort","subgroup","UCSC_RefGene_Name")]
+
+# write_tsv(all_bed,paste0(results_dir,"/","CavDMPloc.bed"))
+
+for (co in unique(all_bed$cohort)) {
+  for (sub in unique(all_bed$subgroup)) {
+    dmp <- filter(all_bed, subgroup==sub & cohort==co)
+    write.table(dmp, file =paste0(results_dir,"/",co,"_",sub,"_dmp.bed"), col.names=T, row.names=F, quote=F, sep = "\t")
+  }
+}
+
+# read in intersections to plot CNV from
+
+d <- list.files(path=results_dir, pattern = ".CNVfeature_intersect.txt")
+readCNV <- function(name){
+  tmp <- read_tsv(paste0(results_dir,"/",name, sep=""))
+  colnames(tmp) <- c("chrom","start","end","probeID","DMPcohort","DMPsubgroup","geneName","CNV_chrom","CNV_start","CNV_end","ID","seg.mean","cohort","subgroup","pval","seg.median","overlap")
+  tmp
+}
+all_intersect <- map_dfr(d, readCNV)
+# all_intersect_bed <- all_intersect[,c("chrom","start","end","probeID","seg.mean","cohort","subgroup","pval","seg.median", "geneName")]
+# write.table(all_bed, file = "CohortSpecific_CNVintersect_combined.bed", col.names = T, row.names = F, quote = F, sep = "\t")
+
+d3 <- c(cavSHH_path2, cavWNT_path2,cavG3_path2,cavG4_path2,newSHH_path2, newWNT_path2,newG3_path2,newG4_path2)
+readCounts <- function(name){
+  print(name)
+  tmp <- read_csv(name)
+  # colnames(tmp)[7] <- "counts"
+  # colnames(tmp)[1] <- "locID"
+  #tmp <- filter(tmp, Chr %in% c(1:22, "X","Y"))
+  group <- str_remove(name, "/Users/moss0134/Google Drive/Research/SexDiffMedullo/Analysis_RMM_new/Results/tables/")
+  print(group)
+  group <- str_remove(group, "_DMPFullResults_v2.csv") 
+  print(group)
+  tmp$group <- group
+  # tmp <- tmp[,c("locID","counts","sampleID")]
+  tmp
+}
+all_d3 <- map_dfr(d3, readCounts)
+
+
+```
+
+Read in pheno files
+```{r readpheno}
+phenoNew <- read_csv(paste0(phenoDir,"/processed/Newcastle/Newcastle_pheno_v3.csv"))
+phenoCav <- read_csv(paste0(phenoDir,"/pheno_CavalliCombined_subgrouped.csv"))
+phenoCav$sex <- 
+  factor(phenoCav$predictedSex, 
+         levels=c("Female","Male"),
+         labels=c("F", # Reference
+                  "M"))
+pheno <- phenoNew[c("geo_accession","sample","sex")]
+phenoC <- phenoCav[,c("geo_accession_Meth","Study_ID","sex")]
+colnames(phenoC) <- c("geo_accession","sample","sex")
+pheno <- rbind(pheno,phenoC)
+all_intersect_pheno <- left_join(all_intersect, pheno,by=c("ID"="geo_accession"))
+
+```
+
+### Read in results of intersecting CNV segments with chromosome arms and genes of interest: GLI2, MYCN, 17p, 14q
+
+```{r readintersectarm}
+
+# read in intersections to plot CNV from
+
+d <- list.files(path=results_dir, pattern = ".CNVfeature_intersect_genearm.txt")
+readCNVarm <- function(name){
+  tmp <- read_tsv(paste0(results_dir,"/",name, sep=""))
+  colnames(tmp) <- c("chrom","start","end","probeID","DMPcohort","DMPsubgroup","CNV_chrom","CNV_start","CNV_end","ID","seg.mean","cohort","subgroup","pval","seg.median","overlap")
+  tmp
+}
+all_intersect_genearm <- map_dfr(d, readCNVarm)
+# all_intersect_bed <- all_intersect[,c("chrom","start","end","probeID","seg.mean","cohort","subgroup","pval","seg.median", "geneName")]
+# write.table(all_bed, file = "CohortSpecific_CNVintersect_combined.bed", col.names = T, row.names = F, quote = F, sep = "\t")
+all_genearm_pheno <- left_join(all_intersect_genearm, pheno,by=c("ID"="geo_accession"))
+
+
+```
+
+## Create boxplots of CNV by sex
+
+### Cavalli boxplots of CNV segment mean for each DMP by sex 
+Cavalli boxplots
+```{r boxplot, out.width="100%"}
+bp <- ggplot(subset(all_intersect_pheno,!is.na(sex) & subgroup=="Group3" & cohort=="Cavalli"), aes(x=sex,y=seg.mean, fill=sex)) + geom_boxplot()
+CavG3_bp <- bp + ylim(NA, 0.6) + facet_wrap(~ probeID, scales="free_y") + 
+  stat_compare_means(aes(group=sex, ), label="p.signif", hide.ns=F, size=8, label.x=1.5,label.y=0.5) +
+  theme_bw(base_size=14) + scale_fill_manual(values=c("red", "black")) +
+  theme(axis.title.x=element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.2, hjust = 0.95)) + 
+  ggtitle("Cavali: MB Group3 CNV segment mean comparisons at DMPs by sex")
+CavG3_bp
+
+#+ geom_rect(data = subset(all_intersect_pheno, !is.na(sex) & subgroup...6=="Group4" & probeID %in% c("cg09067967","cg11643285","cg02758552","cg17238319")), fill = NA, colour = "red", xmin = -Inf,xmax = Inf, ymin = -Inf,ymax = Inf, aes(size=5))
+
+bp <- ggplot(subset(all_intersect_pheno,!is.na(sex) & subgroup=="Group4" & cohort=="Cavalli"), aes(x=sex,y=seg.mean, fill=sex)) + geom_boxplot()
+CavG4_bp <- bp + ylim(NA, 0.7) + facet_wrap(~ probeID, scales="free_y") + 
+  stat_compare_means(aes(group=sex, ), label="p.signif", hide.ns=F, size=8, label.x=1.5,label.y=0.6) +
+  theme_bw(base_size=14) + scale_fill_manual(values=c("red", "black")) +
+  theme(axis.title.x=element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.2, hjust = 0.95)) + 
+  ggtitle("Cavalli: MB Group4 CNV segment mean comparisons at DMPs by sex")
+CavG4_bp
+#+ geom_rect(data = subset(all_intersect_pheno, !is.na(sex) & subgroup...6=="Group4" & probeID %in% c("cg22345911")),fill = NA, colour = "red", xmin = -Inf,xmax = Inf,ymin = -Inf,ymax = Inf, aes(size=5))
+
+bp <- ggplot(subset(all_intersect_pheno,!is.na(sex) & subgroup=="WNT" & cohort=="Cavalli"), aes(x=sex,y=seg.mean, fill=sex)) + geom_boxplot()
+CavWNT_bp <- bp + ylim(NA,0.5) + facet_wrap(~ probeID, scales="free_y") + 
+  stat_compare_means(aes(group=sex, ), label="p.signif", hide.ns=F, size=8, label.x=1.5,label.y=0.4) +
+  theme_bw(base_size=14) + scale_fill_manual(values=c("red", "black")) +
+  theme(axis.title.x=element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.2, hjust = 0.95)) + 
+  ggtitle("Cavalli: MB WNT CNV segment mean comparisons at DMPs by sex")
+CavWNT_bp
+
+CavSHH_intersect <- subset(all_intersect_pheno, !is.na(sex) & subgroup=="SHH"  & cohort=="Cavalli")
+CavSHH_DMPs <- unique(CavSHH_intersect$probeID)
+CavSHH_DMPs_1 <- CavSHH_DMPs[1:32]
+CavSHH_DMPs_2 <- CavSHH_DMPs[33:64]
+CavSHH_DMPs_3 <- CavSHH_DMPs[65:96]
+CavSHH_DMPs_4 <- CavSHH_DMPs[97:130]
+
+bp <- ggplot(subset(CavSHH_intersect, probeID %in% CavSHH_DMPs_1), aes(x=sex,y=seg.mean, fill=sex)) + geom_boxplot()
+CavSHH_bp1 <- bp + ylim(NA,1.5) + facet_wrap(~ probeID, scales="free_y") + stat_compare_means(aes(group=sex, ),  label="p.signif", hide.ns=F, size=8, label.x=1.5,label.y=1) + theme_bw(base_size=14) + scale_fill_manual(values=c("red", "black")) + theme(axis.title.x=element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.2, hjust = 0.95)) + ggtitle("Cavalli: MB SHH CNV segment mean comparisons at DMPs by sex (Part I)")
+CavSHH_bp1
+
+bp <- ggplot(subset(CavSHH_intersect, probeID %in% CavSHH_DMPs_2), aes(x=sex,y=seg.mean, fill=sex)) + geom_boxplot()
+CavSHH_bp2 <- bp + ylim(NA,1.5) + facet_wrap(~ probeID, scales="free_y") + stat_compare_means(aes(group=sex, ), label="p.signif", hide.ns=F, size=8, label.x=1.5,label.y=0.9) + theme_bw(base_size=14) + scale_fill_manual(values=c("red", "black")) + theme(axis.title.x=element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.2, hjust = 0.95)) + ggtitle("Cavalli: MB SHH CNV segment mean comparisons at DMPs by sex (Part II)")
+CavSHH_bp2
+
+bp <- ggplot(subset(CavSHH_intersect, probeID %in% CavSHH_DMPs_3), aes(x=sex,y=seg.mean, fill=sex)) + geom_boxplot()
+CavSHH_bp3 <- bp + ylim(NA, 0.85) + facet_wrap(~ probeID, scales="free_y") + stat_compare_means(aes(group=sex, ), label="p.signif", hide.ns=F, size=8, label.x=1.5,label.y=0.75) + theme_bw(base_size=14) + scale_fill_manual(values=c("red", "black")) + theme(axis.title.x=element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.2, hjust = 0.95)) + ggtitle("Cavalli: MB SHH CNV segment mean comparisons at DMPs by sex (Part III)")
+CavSHH_bp3
+
+bp <- ggplot(subset(CavSHH_intersect, probeID %in% CavSHH_DMPs_4), aes(x=sex,y=seg.mean, fill=sex)) + geom_boxplot()
+CavSHH_bp4 <- bp + ylim(NA,2.1) + facet_wrap(~ probeID, scales="free_y") + stat_compare_means(aes(group=sex, ), label="p.signif", hide.ns=F, size=8, label.x=1.25, label.y=2.0) + theme_bw(base_size=14) + scale_fill_manual(values=c("red", "black")) + theme(axis.title.x=element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.2, hjust = 0.95)) + ggtitle("Cavalli: MB SHH CNV segment mean comparisons at DMPs by sex (Part IV)")
+CavSHH_bp4
+```
+
+### Newcastle boxplots of CNV segment mean for each DMP by sex 
+Newcastle box plots
+```{r Newbox}
+label_facet <- function(df){
+  lev <- levels(as.factor(df$probeID))
+  lab <- paste0(lev,"-",gene)
+  names(lab) <- lev
+  return(lab)  
+}
+
+# test <- label_facet(all_intersect_pheno$probeID,all_intersect$geneName) 
+
+label_facet <- paste0(all_intersect_pheno$probeID," ",all_intersect_pheno$geneName)
+label_facet <- data.frame(all_intersect_pheno[,c("probeID","sex","cohort","subgroup")],label_facet)
+probeID.labs <- paste0(all_intersect_pheno$probeID," ",all_intersect_pheno$geneName)
+all_intersect_pheno$probeID.labs <- probeID.labs
+
+NewAll_bp <- ggplot(subset(all_intersect_pheno,!is.na(sex) & cohort=="Newcastle"), aes(x=sex,y=seg.mean, fill=sex)) + geom_boxplot() + ylim(NA, 0.6) + facet_grid(subgroup ~ probeID.labs, labeller = labeller(probeID.labs = label_wrap_gen(10)), scales="free_y") + 
+  stat_compare_means(aes(group=sex, ), label="p.signif", hide.ns=F, size=8, label.x=1.5,label.y=0.5) +
+  theme_bw(base_size=14) + scale_fill_manual(values=c("red", "black")) +
+  theme(axis.title.x=element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.2, hjust = 0.95)) + 
+  ggtitle("Newcastle: MB Group3 CNV segment mean comparisons at DMPs by sex")
+NewAll_bp
+
+
+bp <- ggplot(subset(all_intersect_pheno,!is.na(sex) & subgroup=="Group3" & cohort=="Newcastle"), aes(x=sex,y=seg.mean, fill=sex)) + geom_boxplot()
+NewG3_bp <- bp + ylim(NA, 0.6) + facet_wrap(~ probeID, scales="free_y") + 
+  stat_compare_means(aes(group=sex, ), label="p.signif", hide.ns=F, size=8, label.x=1.5,label.y=0.5) +
+  theme_bw(base_size=14) + scale_fill_manual(values=c("red", "black")) +
+  theme(axis.title.x=element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.2, hjust = 0.95)) + 
+  ggtitle("Newcastle: MB Group3 CNV segment mean comparisons at DMPs by sex")
+NewG3_bp
+
+#+ geom_rect(data = subset(all_intersect_pheno, !is.na(sex) & subgroup...6=="Group4" & probeID %in% c("cg09067967","cg11643285","cg02758552","cg17238319")), fill = NA, colour = "red", xmin = -Inf,xmax = Inf, ymin = -Inf,ymax = Inf, aes(size=5))
+
+bp <- ggplot(subset(all_intersect_pheno,!is.na(sex) & subgroup=="Group4" & cohort=="Newcastle"), aes(x=sex,y=seg.mean, fill=sex)) + geom_boxplot()
+NewG4_bp <- bp + ylim(NA, 0.7) + facet_wrap(~ probeID, scales="free_y") + 
+  stat_compare_means(aes(group=sex, ), label="p.signif", hide.ns=F, size=8, label.x=1.5,label.y=0.6) +
+  theme_bw(base_size=14) + scale_fill_manual(values=c("red", "black")) +
+  theme(axis.title.x=element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.2, hjust = 0.95)) + 
+  ggtitle("Newcastle: MB Group4 CNV segment mean comparisons at DMPs by sex")
+NewG4_bp
+#+ geom_rect(data = subset(all_intersect_pheno, !is.na(sex) & subgroup...6=="Group4" & probeID %in% c("cg22345911")),fill = NA, colour = "red", xmin = -Inf,xmax = Inf,ymin = -Inf,ymax = Inf, aes(size=5))
+
+bp <- ggplot(subset(all_intersect_pheno,!is.na(sex) & subgroup=="WNT" & cohort=="Newcastle"), aes(x=sex,y=seg.mean, fill=sex)) + geom_boxplot()
+NewWNT_bp <- bp + ylim(NA,0.5) + facet_wrap(~ probeID, scales="free_y") + 
+  stat_compare_means(aes(group=sex, ), label="p.signif", hide.ns=F, size=8, label.x=1.5,label.y=0.4) +
+  theme_bw(base_size=14) + scale_fill_manual(values=c("red", "black")) +
+  theme(axis.title.x=element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.2, hjust = 0.95)) + 
+  ggtitle("Newcastle: MB WNT CNV segment mean comparisons at DMPs by sex")
+NewWNT_bp
+
+# SHH_intersect <- subset(all_intersect_pheno, !is.na(sex) & subgroup...6=="SHH")
+# SHH_DMPs <- unique(SHH_intersect$probeID)
+# SHH_DMPs_1 <- SHH_DMPs[1:32]
+# SHH_DMPs_2 <- SHH_DMPs[33:64]
+# SHH_DMPs_3 <- SHH_DMPs[65:96]
+# SHH_DMPs_4 <- SHH_DMPs[97:130]
+
+bp <- ggplot(subset(all_intersect_pheno,!is.na(sex) & subgroup=="SHH" & cohort=="Newcastle"), aes(x=sex,y=seg.mean, fill=sex)) + geom_boxplot()
+NewSHH_bp1 <- bp + ylim(NA,1.5) + facet_wrap(~ probeID, scales="free_y") + stat_compare_means(aes(group=sex, ),  label="p.signif", hide.ns=F, size=8, label.x=1.5,label.y=1) + theme_bw(base_size=14) + scale_fill_manual(values=c("red", "black")) + theme(axis.title.x=element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.2, hjust = 0.95)) + ggtitle("Newcastle: MB SHH CNV segment mean comparisons at DMPs by sex (Part I)")
+NewSHH_bp1
+
+# bp <- ggplot(subset(SHH_intersect, probeID %in% SHH_DMPs_2), aes(x=sex,y=seg.mean, fill=sex)) + geom_boxplot()
+# SHH_bp2 <- bp + ylim(NA,1.5) + facet_wrap(~ probeID, scales="free_y") + stat_compare_means(aes(group=sex, ), label="p.signif", hide.ns=F, size=8, label.x=1.5,label.y=0.9) + theme_bw(base_size=14) + scale_fill_manual(values=c("red", "black")) + theme(axis.title.x=element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.2, hjust = 0.95)) + ggtitle("Medulloblastoma SHH CNV segment mean comparisons at DMPs by sex (Part II)")
+# SHH_bp2
+# 
+# bp <- ggplot(subset(SHH_intersect, probeID %in% SHH_DMPs_3), aes(x=sex,y=seg.mean, fill=sex)) + geom_boxplot()
+# SHH_bp3 <- bp + ylim(NA, 0.85) + facet_wrap(~ probeID, scales="free_y") + stat_compare_means(aes(group=sex, ), label="p.signif", hide.ns=F, size=8, label.x=1.5,label.y=0.75) + theme_bw(base_size=14) + scale_fill_manual(values=c("red", "black")) + theme(axis.title.x=element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.2, hjust = 0.95)) + ggtitle("Medulloblastoma SHH CNV segment mean comparisons at DMPs by sex (Part III)")
+# SHH_bp3
+# 
+# bp <- ggplot(subset(SHH_intersect, probeID %in% SHH_DMPs_4), aes(x=sex,y=seg.mean, fill=sex)) + geom_boxplot()
+# SHH_bp4 <- bp + ylim(NA,2.1) + facet_wrap(~ probeID, scales="free_y") + stat_compare_means(aes(group=sex, ), label="p.signif", hide.ns=F, size=8, label.x=1.25, label.y=2.0) + theme_bw(base_size=14) + scale_fill_manual(values=c("red", "black")) + theme(axis.title.x=element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.2, hjust = 0.95)) + ggtitle("Newcaslte: MB SHH CNV segment mean comparisons at DMPs by sex (Part IV)")
+# SHH_bp4
+
+```
+
+### Cavalli and Newcastle boxplots of CNV segment mean for each gene or chromosome arm of interest by sex 
+```{r armbox}
+# Newcastle box plot
+absmax <- function(x){x[which.max(abs(x))][1]}
+# gene2seg <- all_genearm_pheno %>% group_by(probeID, ID) %>% summarise(numSegs = n(), maxSeg = absmax(seg.mean))
+
+gene2seg <- all_genearm_pheno %>% 
+  group_by(probeID,ID) %>% 
+  mutate(numSegs = n(), maxSeg = absmax(seg.mean)) %>% 
+  filter(seg.mean==maxSeg)
+
+NewAll_bp_arm <- ggplot(subset(gene2seg,!is.na(sex) & cohort=="Newcastle"), aes(x=sex,y=seg.mean, fill=sex)) + geom_boxplot() + facet_grid(subgroup ~ probeID, scales="free_y") + 
+  stat_compare_means(aes(group=sex, ), label="p.signif", hide.ns=F, size=4, label.x=1.4,label.y=0.1) +
+  theme_bw(base_size=14) + scale_fill_manual(values=c("red", "black")) +
+  theme(axis.title.x=element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.2, hjust = 0.95)) + 
+  ggtitle("Newcastle: MB CNV segment mean comparisons at genes of interest by sex")
+NewAll_bp_arm
+
+#Cavalli box plot
+
+CavAll_bp_arm <- ggplot(subset(gene2seg,!is.na(sex) & cohort=="Cavalli"), aes(x=sex,y=seg.mean, fill=sex)) + geom_boxplot() + facet_grid(subgroup ~ probeID, scales="free_y") + 
+  stat_compare_means(aes(group=sex, ), label="p.signif", hide.ns=F, size=4, label.x=1.4,label.y=0.1) +
+  theme_bw(base_size=14) + scale_fill_manual(values=c("red", "black")) +
+  theme(axis.title.x=element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.2, hjust = 0.95)) + 
+  ggtitle("Cavalli: MB CNV segment mean comparisons at genes of interest by sex")
+CavAll_bp_arm
+
+
+```
+
+### Saving plots
+
+```{r save_plots}
+# png(file=file.path(results_dir, "UpsetPlot_compareDMPs_healthybrain.png"),
+# width = 1200, height =750, units = 'px')
+# p1
+# dev.off()
+
+# ggsave(
+#   file.path(results_dir, "UpsetPlot_compareDMPs_healthybrain.png"),
+#   p1,
+# )
+Cav_list <- list(G3_bp,G4_bp,WNT_bp,SHH_bp1,SHH_bp2,SHH_bp3,SHH_bp4)
+New_list <- list(NewG3_bp,NewG4_bp,NewWNT_bp,NewSHH_bp1)
+
+#pdf(file=paste0(results_dir,"/allCNV_DMPbySex.pdf"),paper = "a4r", width=11, height=8.5)
+invisible(lapply(l, print))
+#dev.off()
+
+
+```
+
+Calculate tables for significance
+```{r stats}
+# celltypes_Long_Pheno <- celltypes_Long_Pheno %>%
+#   rename(
+#     score = `Absolute score`
+#   )
+# head(celltypes_Long_Pheno)
+cohorts <- c("Cavalli","Newcastle")
+subgroups <- c("SHH","WNT","Group3","Group4")
+
+df_wilcox = data.frame()
+for (co in cohorts){
+  for (sub in subgroups){
+    data <- subset(all_intersect_pheno,!is.na(sex) & subgroup==sub & cohort==co)
+    wilcox <- compare_means(seg.mean~sex, data=data, group.by=c("probeID"))
+    wilcox$group <- paste0(co,"_",sub) 
+    df_wilcox <- rbind(df_wilcox,wilcox)
+  }
+}
+
+df_wilcox_join <- df_wilcox[,c("probeID","group","p.signif")]
+colnames(df_wilcox_join) <- c("probeID","group","Compare Avg CNV segment mean by sex - p.signif")
+dmps_lists <- left_join(all_d3, df_wilcox_join)
+
+
+list_of_datasets <- list("S2-Cavalli_SHH" = subset(dmps_lists, group=="Cavalli_SHH"),
+                         "S3-Cavalli_WNT" = subset(dmps_lists, group=="Cavalli_WNT"),
+                         "S4-Cavalli_Group3" = subset(dmps_lists, group=="Cavalli_Group3"),
+                         "S5-Cavalli_Group4" = subset(dmps_lists, group=="Cavalli_Group4"),
+                         "S6-Newcastle_SHH" = subset(dmps_lists, group=="Newcastle_SHH"),
+                         "S7-Newcastle_WNT" = subset(dmps_lists, group=="Newcastle_WNT"),
+                         "S8-Newcastle_Group3" = subset(dmps_lists, group=="Newcastle_Group3"),
+                         "S9-Newcastle_Group4" = subset(dmps_lists, group=="Newcastle_Group4"))
+
+# write.xlsx(list_of_datasets, file = paste0(dir2,"/Supplemental_Tables_102222.xlsx"))
+
+# list_of_datasets <- list("MethylCIBERSORT_SexDiffOverall" = wilcox_sexDiff_all, 
+#                          "MethylCIBERSORT_SexDiffbySubgroup" = wilcox_sexDiff_subgroup, 
+#                          "MethylCIBERSORT_SubgroupCelltypes" = wilcox_SubgroupCellTypes)
+# write.xlsx(list_of_datasets, file = "./stats/wilcoxstats_MethylCIBERSORT.xlsx")
+
+
+```
+
+
+## Session information
+
+We like to end all of our notebooks with a call to a function that provides a brief report about the versions of R and all packages that were used in the notebook.
+This can be very useful for debugging down the line, as different versions of packages, R, or even the operating system can sometimes result in slightly or significantly differen outputs.
+
+The most common such function is `sessionInfo()`, which is part of base R and is what we are using here, but a nice alternative is the function `sessioninfo::session_info()` (part of the `sessioninfo` package), which provides a somewhat more neatly-formatted report with a bit more information.
+
+```{r session_info}
+sessionInfo()
+```

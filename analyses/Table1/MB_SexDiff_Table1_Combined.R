@@ -4,15 +4,20 @@ library(dplyr)
 library(table1)
 library(boot)
 
+#### Data directory
+dir <- "/Volumes/GoogleDrive/My\ Drive/Research/SexDiffMedullo/Analysis_RMM_new/data/"
+
 #### Read in data ####
-phenoHov <- read_csv("./data/pheno_Hovestadt_subgrouped.csv")
-phenoCav <- read_csv("./data/pheno_CavalliCombined_subgrouped.csv")
-phenoNew <- read_csv("./data/Newcastle_pheno_filt_MethPedsubgroup.csv")
+phenoHov <- read_csv(paste0(dir,"pheno_Hovestadt_subgrouped.csv"))
+phenoCav <- read_csv(paste0(dir,"pheno_CavalliCombined_subgrouped.csv"))
+phenoNew <- read_csv(paste0(dir,"Newcastle_pheno_filt_MethPedsubgroup.csv"))
 
 # Standardize columns, column names, and add column for source
 phenoHovF <- phenoHov[,c(1:2,4:8)]
 colnames(phenoHovF) <- c("sample","geo_accession","description","age","sex","subgroup","type")
 phenoHovF$source <- c("Hovstadt")
+# phenoCavF <- phenoCav[,c(2,15,24,3,5,12,21,8:10)]
+# colnames(phenoCavF) <- c("sample","geo_accession","description","age","sex","subgroup","type","Histology","Metastatic Disease","Vital Status")
 phenoCavF <- phenoCav[,c(2,15,24,3,5,12,21)]
 colnames(phenoCavF) <- c("sample","geo_accession","description","age","sex","subgroup","type")
 phenoCavF$source <- c("Cavalli")
@@ -21,8 +26,8 @@ phenoCavF$sex <-
          levels=c("Female","Male"),
          labels=c("F", # Reference
                   "M"))
-phenoNewF <- phenoNew[,c(10,1,2,5,7,14)]
-phenoNewF$type <- c("NA")
+phenoNewF <- phenoNew[,c(10,1,2,5,7,14,8)]
+#phenoNewF$type <- c("NA")
 colnames(phenoNewF) <- c("sample","geo_accession","description","age","sex","subgroup","type")
 phenoNewF$source <- c("Newcastle")
 

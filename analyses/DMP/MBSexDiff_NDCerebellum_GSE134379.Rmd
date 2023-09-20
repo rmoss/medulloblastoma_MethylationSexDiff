@@ -1,0 +1,213 @@
+---
+title: "Medulloblastoma Sex Difference - Non-demented cerebellum QC & DMP"
+author: "Rachel Moss"
+date: "11/18/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+require("knitr")
+knitr::opts_chunk$set(echo = TRUE)
+opts_knit$set(root.dir = "/Users/moss0134/Projects/medulloblastoma_MethylationSexDiff")
+```
+
+Load libraries
+```{r load} 
+library(minfi)
+library(GEOquery)
+library(dplyr)
+library(tidyverse)
+library(readr)
+library(openxlsx)
+library(IlluminaHumanMethylation450kanno.ilmn12.hg19)
+library(IlluminaHumanMethylation450kmanifest)
+```
+### Specify files and paths
+
+```{r inputs}
+# Set the directory where the processed data will be kept
+rawdata <- "/Volumes/GoogleDrive/My Drive/Research/SexDiffMedullo/Analysis_RMM_new/data/raw"
+procData <- "/Volumes/GoogleDrive/My Drive/Research/SexDiffMedullo/Analysis_RMM_new/data/processed"
+controlGSE <- "GSE134379"
+
+```
+
+Outputs
+```{r outputs}
+# set the directory to save output plots
+results_dir <- "/Volumes/GoogleDrive/My\ Drive/Research/SexDiffMedullo/Analysis_RMM_new/Results/tables"
+
+# create the results directory if it does not exist
+if (!dir.exists(results_dir)){
+  dir.create(results_dir, recursive = TRUE)
+}
+```
+# Data 
+
+Load RDS object
+```{r loaddata}
+Mset_Ctrl <- readRDS(paste0(procData,"/MSet_control_CBL_GSE134379.RDS"))
+RGset_Ctrl <- readRDS(paste0(procData,"/RGSet_control_CBL_GSE134379.RDS"))
+phenoCtrl <- read_csv(paste0(rawdata,"/control_",controlGSE,"/idat/","Control_CBL_",controlGSE,"_pheno_Sample_Sheet.csv"))
+phenoCtrl <- phenoCtrl[match(colnames(RGset_Ctrl),phenoCtrl$Basename),]
+
+```
+## QC of Healthy Brain data
+When I loaded the control data into conumee if gave an error warning that intensities are abnormally low (<5000) so I will run basic minfi QC on it to see if there are any bad samples.
+```{r qc}
+proj <- paste0("control_",controlGSE)
+#qcCtrl <- minfiQC(proj, results_dir, Mset_Ctrl,)
+
+
+qc <- getQC(Mset_Ctrl)
+#png(file=paste0(results_dir,"/",proj,"_plotQC.png"))
+plotQC(qc)
+#dev.off()
+MSet_Ctrl <- addQC(Mset_Ctrl, qc)
+
+densityPlot(MSet_Ctrl, sampGroups = phenoCtrl$Sex)
+densityBeanPlot(MSet_Ctrl, sampGroups = phenoCtrl$Sex)
+
+# Quality Control Report
+# qcReport(RGset_Ctrl, sampNames = phenoCtrl$Basename,sampGroups = phenoCtrl$Sex, pdf = paste0(results_dir,"/qcReport_",proj,".pdf"))
+```
+
+
+Run detP function on RGSet & normalize using preprocessFunnorm
+```{r norm}
+gc()
+detP <- detectionP(RGset_Ctrl)
+GRSet_Ctrl <- preprocessFunnorm(RGset_Ctrl)
+saveRDS(GRSet_Ctrl, paste0(procData,"/GRSet_control_CBL_GSE134379.RDS"))
+```
+
+
+Check predicted sex and remove samples that that don't match reported sex     
+```{r getsex{}}
+predictedSex <- getSex(GRSet_Ctrl, cutoff = -2)$predictedSex
+head(predictedSex)
+GRSet_Ctrl <- addSex(GRSet_Ctrl) ### adding predictedSex to GRSet
+minfi::plotSex(GRSet_Ctrl)
+keep <- filter(phenoCtrl, ifelse(Sex == predictedSex,T,F))$Basename
+keep
+```
+There were no discordant sex samples based on methylation.
+
+### Remove probes with SNPs, xreactive probes, sex chromosomes, and high p-values
+```{r removeprobes}
+# removing SNP’s from GRSet
+snps <- getSnpInfo(GRSet_Ctrl)
+GRSet_Ctrl <- addSnpInfo(GRSet_Ctrl)
+
+GRSet_Ctrl <- dropLociWithSnps(GRSet_Ctrl, snps=c("SBE","CpG"), maf=0)
+
+# removing cross reactive probes
+xReactiveProbes <- read.xlsx("/Volumes/GoogleDrive/My\ Drive/Research/HB_Methylation_Project/HBMeth_CombinedAnalysis/Data3/48639-non-specific-probes-Illumina450k.xlsx", 1)
+xReactiveProbes <- xReactiveProbes[match(featureNames(GRSet_Ctrl),xReactiveProbes$TargetID),]
+keep_nonxreact <- !(featureNames(GRSet_Ctrl) %in% xReactiveProbes$TargetID)
+table(keep_nonxreact)
+GRSet.flt <- GRSet_Ctrl[keep_nonxreact,]
+GRSet.flt
+
+# Removing Sex chromosomes
+ann450k <- getAnnotation(IlluminaHumanMethylation450kanno.ilmn12.hg19)
+keep <- !(featureNames(GRSet.flt) %in% ann450k$Name[ann450k$chr %in% 
+                                                      c("chrX","chrY")])
+table(keep)
+GRSet.flt <- GRSet.flt[keep, ]
+
+# Removing probes with high p-values
+detP <- detP[match(featureNames(GRSet.flt),rownames(detP)),]
+keep <- rowSums(detP < 0.01) == ncol(GRSet.flt)
+table(keep)
+#keep
+# FALSE   TRUE 
+# 66270 363674 
+
+GRSet.flt <- GRSet.flt[keep,]
+
+# saveRDS(GRSet.flt, paste0(procData,"/GRSet_Ctrl_CBL_GSE134379_filt.RDS"))
+```
+
+
+#### Start here if loading filtered GRSet ####
+```{r loadfilt}
+# GRSet.flt <- readRDS(paste0(procData,"/GRSet_Ctrl_CBL_GSE134379_filt.RDS"))
+
+```
+
+## Run DMP analysis
+
+I'm going to get the beta values form the filtered GRSet, then run a DMP finder function to understand differentially methylated probes by sex.
+```{r dmp}
+pheno_sex <- factor(phenoCtrl$Sex, levels=c("M","F"))
+
+beta <- getBeta(GRSet.flt)
+dmp <- dmpFinder(beta, pheno = pheno_sex, type = "categorical") ### finding DMP's between sex
+saveRDS(dmp, paste0(procData, "/CBL_Ctrl_GSE134379_DMPs_sexdiff.rds", sep=""))
+
+# filtering DMP’s to significant ones (qvalue < 0.05)
+dmpSig <- dmp[as.numeric(as.character(dmp$qval))<0.05,]
+sigBeta <- beta[rownames(dmpSig), ]
+sigBeta <- as.data.frame(sigBeta)
+sigBeta <- rownames_to_column(sigBeta, var = "probeID")
+dim(dmpSig)
+
+# finding delta beta values (Male - Female)
+betaLong2 <- pivot_longer(sigBeta, -probeID, names_to = "sampleID", values_to = "betaVal")
+betaLong2 <- left_join(betaLong2, phenoCtrl,by=c("sampleID"="Basename")) 
+# betaLong2 <- separate(betaLong2, "sampleID", "GSMid", sep = "_", remove = F) ### "sampleID" has messy characters that need to be removed
+
+# creating a table (called “summary2”) showing the average beta value for males and females on each probe
+summary2 <- betaLong2 %>% 
+  group_by(probeID, Sex) %>%   
+  dplyr::summarize(avgBeta = mean(betaVal))
+summaryWide <- pivot_wider(summary2[,c("probeID","Sex","avgBeta")], names_from = Sex, values_from = avgBeta)
+diffValue <- summaryWide
+diffValue$diff <- summaryWide$`M`-summaryWide$`F`
+head(diffValue)
+
+# write_csv(diffValue, paste0(results_dir,"/CBL_Ctrl__GSE134379_DeltaBetapredSex.csv"))
+
+# finding negative or positive differences (Male - Female)
+neg_diff <- diffValue %>%
+  filter(diff < 0)
+
+nrow(neg_diff)
+
+pos_diff <- diffValue %>%
+  filter(diff > 0)
+
+nrow(pos_diff)
+
+# Creating Full Results table (with probeID, gene name, p-value, delta beta):
+dmpSig <- dmpSig %>%
+  rownames_to_column(var = "probeID")
+full_predSex <- full_join(dmpSig, diffValue, by = "probeID")
+
+ann450k_df <- as.data.frame(ann450k)
+ann450kNew <- filter(ann450k_df, Name %in% full_predSex$probeID)
+ann450kNew <- ann450kNew %>%
+  rownames_to_column(var = "probeID")
+gene_probeID <- ann450kNew %>%
+  dplyr::select(probeID, UCSC_RefGene_Name)
+full_predSex <- full_predSex %>%
+  left_join(dplyr::select(gene_probeID, probeID, UCSC_RefGene_Name), by = "probeID")
+full_predSex <- full_predSex %>%
+  filter(!UCSC_RefGene_Name == "")
+
+# write_csv(full_predSex, paste0(results_dir,"/CBL_Ctrl__GSE134379_MethFullResults.csv"))
+
+```
+## Session information
+
+```{r session_info}
+sessionInfo()
+```
+
+
+
+
+
+
+

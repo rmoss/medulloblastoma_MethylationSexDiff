@@ -1,0 +1,316 @@
+---
+title: "MB Sex Differences in DNA Methylation in subgroups - compare sex-DMPs in SHH subtypes"
+author: "Rachel Moss"
+date: "Mar 10, 2023"
+output:
+  html_document:
+    toc: yes
+    df_print: paged
+  html_notebook:
+    toc: yes
+    toc_float: yes
+editor_options:
+  chunk_output_type: inline
+---
+
+# Introduction
+
+I will use UpSetR package to compare the Cavalli SHH subtype sex-DMPs and the overall SHH sex-DMPs in an upset plot. 
+
+# Setup
+
+## Load packages
+
+```{r packages, message=FALSE, results=FALSE, warning=FALSE}
+library(UpSetR)
+library(readr)
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(xlsx)
+```
+
+### Specify files and paths
+
+These DMP files for each subtype for Cavalli SHH are stored on a shared [google drive](https://drive.google.com/drive/folders/1MrmsVwDTWaDP9Es2Lrcb_AihcxN2Fd3x?usp=share_link).
+
+```{r inputs}
+# Set the directory where the processed data will be kept
+cavDMPDir <- "/Users/moss0134/Google Drive/Research/SexDiffMedullo/Analysis_RMM_new/Results/Cavalli/"
+# newDMPDir <- "/Users/moss0134/Google Drive/Research/SexDiffMedullo/Analysis_RMM_new/Results/Newcastle"
+# brainDMP <- "/Users/moss0134/Google Drive/Research/SexDiffMedullo/Healthy Brain /GSE15745/GSE15745.top.table.CRBLM_M-F_withCHR.tsv"
+# brain2DMP <- "/Users/moss0134/Google Drive/Research/SexDiffMedullo/Analysis_RMM_new/Results/tables/CBL_Ctrl__GSE134379_MethFullResults.csv"
+# cavDEG <- "/Volumes/GoogleDrive/.shortcut-targets-by-id/1Ltbi_PE2R7tMPSb5iRZtW_rWMcXE84zl/Medulloblastoma\ Sex\ Differences\ /Natali\ -\ Archive/Natali\ -\ Gene\ Expression\ Top\ Tables"
+
+# File paths to the DMP files for each subgroup
+cavSHH_path <- file.path(cavDMPDir, "Cavalli_SHH_ageacatadj_dmp_MethFullResults.csv")
+cavSHH_alpha_path <- file.path(cavDMPDir, "/SHH_subtype/Cavalli_SHH_SHH_alpha_ageacatadj_dmp_MethFullResults.csv")
+cavSHH_beta_path <- file.path(cavDMPDir, "/SHH_subtype/Cavalli_SHH_SHH_beta_ageacatadj_dmp_MethFullResults.csv")
+cavSHH_gamma_path <- file.path(cavDMPDir, "/SHH_subtype/Cavalli_SHH_SHH_gamma_ageacatadj_dmp_MethFullResults.csv")
+cavSHH_delta_path <- file.path(cavDMPDir, "/SHH_subtype/Cavalli_SHH_SHH_delta_ageacatadj_dmp_MethFullResults.csv")
+
+#File paths to all the top table files for differential expression done by Natali - /Volumes/GoogleDrive/.shortcut-targets-by-id/1Ltbi_PE2R7tMPSb5iRZtW_rWMcXE84zl/Medulloblastoma\ Sex\ Differences\ /Natali\ -\ Archive/Natali\ -\ Gene\ Expression\ Top\ Tables
+# DEG_ALL <- file.path(cavDEG, "diffExp_M-F_ALLnoSexChr.xlsx")
+# DEG_SHH <- file.path(cavDEG, "diffExp_M-F_SHHnoSexChr.xlsx")
+# DEG_WNT <- file.path(cavDEG, "diffExp_M-F_WNTnoSexChr.xlsx")
+# DEG_G3 <- file.path(cavDEG, "diffExp_M-F_G3noSexChr.xlsx")
+# DEG_G4 <- file.path(cavDEG, "diffExp_M-F_G4noSexChr.xlsx")
+
+
+
+# # Set the directory where the counts files are found
+# counts_dir <- here::here("analyses", "mutation_counts")
+# 
+# # File paths to the counts files for LGAT and medulloblastoma
+# lgat_path <- file.path(counts_dir, "LGAT_gene-mutations.tsv")
+# mb_path <- file.path(counts_dir, "Medulloblastoma_gene-mutations.tsv")
+# 
+# # Reference directory & FLAGS (frequently mutated genes)
+# ref_dir <- here::here("data", "reference")
+# flags_path <- file.path(ref_dir, "FLAGS.txt")
+```
+
+Outputs
+```{r outputs}
+# set the directory to save output plots
+results_dir <- "/Users/moss0134/Google Drive/Research/SexDiffMedullo/Analysis_RMM_new/Results/compareDMPs"
+
+# create the results directory if it does not exist
+if (!dir.exists(results_dir)){
+  dir.create(results_dir, recursive = TRUE)
+}
+```
+
+### Download Data
+Data previously downloaded
+
+```{r downloads}
+
+```
+
+### Define functions
+No functions right now
+
+```{r functions}
+
+```
+
+### Reading data
+
+We'll first read in the DMP files data for Cavalli, Newcastle, and healthy brain as tables. For the upset plot, I will have to use the gene names rather than the 450K probeID because different arrays were used. So I clean up the gene names in the DMP files that have duplicates in entries separated by ; because of multiple transcripts. I will also remove any duplicate genes due to probes associated to the same gene. Finally, I'll filter the healthy brain data to those DMPs with adjusted q-val < 0.05 and also removed duplicate gene names.
+
+```{r read_data}
+cavSHH <- read_csv(cavSHH_path)
+cavSHHa <- read_csv(cavSHH_alpha_path)
+cavSHHb <- read_csv(cavSHH_beta_path)
+cavSHHd <- read_csv(cavSHH_delta_path)
+cavSHHg <- read_csv(cavSHH_gamma_path)
+
+cavSHH <- cavSHH %>% separate_rows(UCSC_RefGene_Name) %>% distinct()
+cavSHHa <- cavSHHa %>% separate_rows(UCSC_RefGene_Name) %>% distinct()
+cavSHHb <- cavSHHb %>% separate_rows(UCSC_RefGene_Name) %>% distinct()
+cavSHHd <- cavSHHd %>% separate_rows(UCSC_RefGene_Name) %>% distinct()
+cavSHHg <- cavSHHg %>% separate_rows(UCSC_RefGene_Name) %>% distinct()
+
+cSHH_L <- unique(cavSHH$UCSC_RefGene_Name)
+cSHHa_L <- unique(cavSHHa$UCSC_RefGene_Name)
+cSHHb_L <- unique(cavSHHb$UCSC_RefGene_Name)
+cSHHd_L <- unique(cavSHHd$UCSC_RefGene_Name)
+cSHHg_L <- unique(cavSHHg$UCSC_RefGene_Name)
+
+cSHH_Lt <- data.frame("symbol"=cSHH_L,"Cav SHH"=1)
+cSHHa_Lt <- data.frame("symbol"=cSHHa_L,"Cav SHH_alpha"=1)
+cSHHb_Lt <- data.frame("symbol"=cSHHb_L,"Cav SHH_beta"=1)
+cSHHd_Lt <- data.frame("symbol"=cSHHd_L,"Cav SHH_delta"=1)
+cSHHg_Lt <- data.frame("symbol"=cSHHg_L, "Cav SHH_gamma"=1)
+
+listI <- list(cSHH_Lt,cSHHa_Lt,cSHHb_Lt,cSHHd_Lt,cSHHg_Lt) %>% purrr::reduce(full_join, by = "symbol")
+
+# remove NA gene found in the brain data
+listI <- listI[-6,]
+# replace all NAs with 0 in the table
+listI[is.na(listI)] <- 0
+
+
+
+ListO <- list(cSHH_Lt,cSHHa_Lt,cSHHb_Lt,cSHHd_Lt,cSHHg_Lt) %>% purrr::reduce(full_join, by = "symbol")
+# replace all NAs with 0 in the table
+ListO[is.na(ListO)] <- 0
+
+cavSHH_p <- cavSHH$probeID
+cavSHHa_p <- cavSHHa$probeID
+cavSHHb_p <- cavSHHb$probeID
+cavSHHd_p <- cavSHHd$probeID
+cavSHHg_p <- cavSHHg$probeID
+
+cSHH_pt <-  data.frame("probe"=cavSHH_p, "Cav SHH" = 1)
+cSHHa_pt <- data.frame("probe"=cavSHHa_p, "Cav SHH_alpha" = 1)
+cSHHb_pt <- data.frame("probe"=cavSHHb_p, "Cav SHH_beta" = 1)
+cSHHd_pt <- data.frame("probe"=cavSHHd_p, "Cav SHH_delta" = 1)
+cSHHg_pt <- data.frame("probe"=cavSHHg_p, "Cav SHH_gamma" = 1)
+
+listI2 <- list(cSHH_pt,cSHHa_pt,cSHHb_pt,cSHHd_pt,cSHHg_pt) %>% purrr::reduce(full_join, by = "probe")
+
+# replace all NAs with 0 in the table
+listI2[is.na(listI2)] <- 0
+
+# cDEG_ALL <- read.xlsx(DEG_ALL,1)
+# cDEG_ALL <- filter(cDEG_ALL, adj.P.Val<0.05)
+# cDEG_SHH <- read.xlsx(DEG_SHH,1)
+# cDEG_SHH <- filter(cDEG_SHH, adj.P.Val<0.05)
+# cDEG_WNT <- read.xlsx(DEG_WNT,1)
+# cDEG_WNT <- filter(cDEG_WNT, adj.P.Val<0.05)
+# cDEG_G3 <- read.xlsx(DEG_G3,1)
+# cDEG_G3 <- filter(cDEG_G3, adj.P.Val<0.05)
+# cDEG_G4 <- read.xlsx(DEG_G4,1)
+# cDEG_G4 <- filter(cDEG_G4, adj.P.Val<0.05)
+# 
+# cALL_DEG <- data.frame("symbol"=cDEG_ALL$symbol, "DEG All" = 1)
+# cSHH_DEG <- data.frame("symbol"=cDEG_SHH$symbol,"DEG SHH"=1)
+# cWNT_DEG <- data.frame("symbol"=cDEG_WNT$symbol,"DEG WNT"=1)
+# cG3_DEG <- data.frame("symbol"=cDEG_G3$symbol,"DEG Group3"=1)
+# cG4_DEG <- data.frame("symbol"=cDEG_G4$symbol,"DEG Group4"=1)
+# 
+# listDEG <- list(cALL_DEG,cSHH_DEG,cWNT_DEG,cG3_DEG,cG4_DEG) %>% purrr::reduce(full_join, by = "symbol")
+
+```
+
+## Create upset plot
+Now I create my upset plot using these lists.
+```{r upset, out.width="100%"}
+listInput1 <- list("Cavalli SHH" = cSHH_L, "Cavalli SHH_alpha" = cSHHa_L, "Cavalli SHH_beta" = cSHHb_L, "Cavalli SHH_gamma" = cSHHg_L, "Cavalli SHH_delta" = cSHHd_L)
+
+listInput2 <- list("Cavalli SHH" = cSHH_L, "Cavalli SHH_alpha" = cSHHa_L, "Cavalli SHH_beta" = cSHHb_L, "Cavalli SHH_gamma" = cSHHg_L, "Cavalli SHH_delta" = cSHHd_L)
+
+p1 <- upset(fromList(listInput1), sets=c("Cavalli SHH_delta","Cavalli SHH_gamma","Cavalli SHH_beta","Cavalli SHH_alpha","Cavalli SHH"), order.by="degree", keep.order=TRUE, mb.ratio = c(0.55, 0.45),text.scale = c(1.3, 1.3, 1, 1, 2, 1.3))
+p1
+
+p2 <- upset(fromList(listInput2), sets=c("Cavalli SHH_delta","Cavalli SHH_gamma","Cavalli SHH_beta","Cavalli SHH_alpha","Cavalli SHH"), order.by="degree", keep.order=TRUE)
+p2
+
+listInput1a <- list("Cavalli SHH" = cSHH_L, "Cavalli SHH_alpha" = cSHHa_L, "Cavalli SHH_beta" = cSHHb_L, "Cavalli SHH_gamma" = cSHHg_L, "Cavalli SHH_delta" = cSHHd_L)
+
+p1a <- upset(fromList(listInput1a), sets=c("Cavalli SHH_delta","Cavalli SHH_gamma","Cavalli SHH_beta","Cavalli SHH_alpha","Cavalli SHH"), order.by="degree", keep.order=TRUE, mb.ratio = c(0.55, 0.45),text.scale = c(1.3, 1.3, 1, 1, 2, 1.3))
+p1a
+
+```
+
+Since the second set of brain data was 450K, this time I will match by probeID.
+```{r upset450k, out.width="100%"}
+# listInput3 <- list("Healthy Brain" = brain_p, "Cavalli SHH" = cavSHH_p, "Cavalli WNT" = cavWNT_p, "Cavalli Group3" = cavG3_p, "Cavalli Group4" = cavG4_p, "Newcastle SHH" = newSHH_p, "Newcastle WNT" = newWNT_p, "Newcastle Group3" = newG3_p, "Newcastle Group4" = newG4_p)
+# 
+# listInput4 <- list("Healthy Brain" = brain_p, "Cavalli ALL" = cavALL_p, "Cavalli SHH" = cavSHH_p, "Cavalli WNT" = cavWNT_p, "Cavalli Group3" = cavG3_p, "Cavalli Group4" = cavG4_p, "Newcastle ALL" = newALL_p, "Newcastle SHH" = newSHH_p, "Newcastle WNT" = newWNT_p, "Newcastle Group3" = newG3_p, "Newcastle Group4" = newG4_p)
+# 
+# listInput5 <- list("Healthy Brain" = brain_p, "Cavalli SHH" = cavSHH_p, "Cavalli WNT" = cavWNT_p, "Cavalli Group3" = cavG3_p, "Cavalli Group4" = cavG4_p)
+# 
+# p3 <- upset(fromList(listInput3), sets=c("Newcastle Group4","Cavalli Group4","Newcastle Group3","Cavalli Group3","Newcastle WNT","Cavalli WNT","Newcastle SHH","Cavalli SHH", "Healthy Brain"), order.by="degree", keep.order=TRUE, mb.ratio = c(0.55, 0.45),text.scale = c(1.3, 1.3, 1, 1, 2, 1.3))
+# p3
+# 
+# p4 <- upset(fromList(listInput4), sets=c("Newcastle Group4","Cavalli Group4","Newcastle Group3","Cavalli Group3","Newcastle WNT","Cavalli WNT","Newcastle SHH","Cavalli SHH", "Newcastle ALL","Cavalli ALL","Healthy Brain"), order.by="degree", keep.order=TRUE)
+# p4
+# 
+# p5 <- upset(fromList(listInput5), sets=c("Cavalli Group4","Cavalli Group3","Cavalli WNT","Cavalli SHH","Healthy Brain"), order.by="degree", keep.order=TRUE)
+# p5
+
+
+subgroups <- c("SHHa","SHHb","SHHd","SHHg")
+
+# uniqueGenes <- function(sub,dir,dmps,brain) {
+#   unique <- filter(dmps, !(probeID %in% brain$probeID))
+#   genes <- as.data.frame(unique$UCSC_RefGene_Name)
+#   colnames(genes) <- c(paste0(sub,"_tumorUniqueDMP_genes"))
+#   write_csv(genes, paste0(dir,"/",sub,"_tumorUnique_DMPgenes.csv"))
+# }
+# 
+# lapply(subgroups, uniqueGenes(results_dir))
+
+
+for (sub in subgroups){
+  unique <- filter(get(paste0("cav",sub)), !(probeID %in% brain2$probeID))
+  genes <- as.data.frame(unique$UCSC_RefGene_Name)
+  colnames(genes) <- c(paste0("#Cavalli",sub,"_tumorUniqueDMP_genes"))
+  write_csv(genes, paste0(results_dir,"/Cavalli_",sub,"_tumorUnique_DMPgenes.csv"))
+}
+uSHH <- filter(cavSHH, !(probeID %in% brain2$probeID))
+uSHH_g <- as.data.frame(uSHH$UCSC_RefGene_Name)
+colnames(uSHH_g) <- c("#Cavalli_SHH_tumorUniqueDMP_genes")
+write_csv(uSHH_g, paste0(results_dir,"/SHH_tumorunique_DMPgenes.csv"))
+
+```
+
+### Print all intersections
+
+```{r intersections}
+data_with_intersection <- listI %>%
+  unite(col = "intersection", -c("symbol"), sep = "")
+data_with_intersection %>%
+  group_by(intersection) %>%
+  summarise(n = n()) %>%
+  arrange(desc(n))
+intersections <- data_with_intersection %>%
+  group_by(intersection) %>%
+  summarise(list = list(symbol)) %>%
+  mutate(list = setNames(list, intersection)) %>%
+  pull(list)
+
+get_intersect_members <- function (x, ...){
+  require(dplyr)
+  require(tibble)
+  x <- x[,sapply(x, is.numeric)][,0<=colMeans(x[,sapply(x, is.numeric)],na.rm=T) & colMeans(x[,sapply(x, is.numeric)],na.rm=T)<=1]
+  n <- names(x)
+  x %>% tibble::rownames_to_column() -> x
+  l <- c(...)
+  a <- intersect(names(x), l)
+  ar <- vector('list',length(n)+1)
+  ar[[1]] <- x
+  i=2
+  for (item in n) {
+    if (item %in% a){
+      if (class(x[[item]])=='integer'){
+        ar[[i]] <- paste(item, '>= 1')
+        i <- i + 1
+      }
+    } else {
+      if (class(x[[item]])=='integer'){
+        ar[[i]] <- paste(item, '== 0')
+        i <- i + 1
+      }
+    }
+  }
+  do.call(filter, ar) %>% tibble::column_to_rownames() -> x
+  return(x)
+}
+
+```
+## Compare DEG to DMPs to see if any match
+
+We want to understand if the DMPs we found are actually expressed
+
+```{r compareDEG}
+phenoDir <- "/Users/moss0134/Google Drive/Research/SexDiffMedullo/Analysis_RMM_new/data/"
+phenoCav <- read_csv(paste0(phenoDir,"/pheno_CavalliCombined_subgrouped.csv"))
+
+```
+
+
+### Saving plots
+
+```{r save_plots}
+# png(file=file.path(results_dir, "UpsetPlot_compareDMPs_healthybrain.png"),
+# width = 1200, height =750, units = 'px')
+# p1
+# dev.off()
+
+# ggsave(
+#   file.path(results_dir, "UpsetPlot_compareDMPs_healthybrain.png"),
+#   p1,
+# )
+
+```
+
+
+## Session information
+
+```{r session_info}
+sessionInfo()
+```

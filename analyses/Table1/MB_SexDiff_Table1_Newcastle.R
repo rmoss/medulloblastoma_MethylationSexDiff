@@ -4,8 +4,11 @@ library(dplyr)
 library(table1)
 library(boot)
 
+
+#### Data directory
+dir <- "/Volumes/GoogleDrive/My\ Drive/Research/SexDiffMedullo/Analysis_RMM_new/data/"
 #### Read in Newcastle data ####
-pheno <- read_csv("./data/Newcastle_pheno_filt_MethPedsubgroup.csv")
+pheno <- read_csv(paste0(dir,"Newcastle_pheno_filt_MethPedsubgroup.csv"))
 
 # create categories for age
 pheno <- pheno %>%

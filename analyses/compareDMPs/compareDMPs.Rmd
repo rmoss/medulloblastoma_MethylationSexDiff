@@ -12,6 +12,7 @@ output:
 editor_options:
   chunk_output_type: inline
 ---
+# Updated with GSE134379 on 11/18/22
 
 ## Introduction
 
@@ -28,6 +29,7 @@ library(readr)
 library(tidyr)
 library(dplyr)
 library(ggplot2)
+library(xlsx)
 ```
 
 ### Specify files and paths
@@ -40,18 +42,29 @@ The healthy brain DMPs are also on a shared [google drive](https://drive.google.
 cavDMPDir <- "/Users/moss0134/Google Drive/Research/SexDiffMedullo/Analysis_RMM_new/Results/Cavalli"
 newDMPDir <- "/Users/moss0134/Google Drive/Research/SexDiffMedullo/Analysis_RMM_new/Results/Newcastle"
 brainDMP <- "/Users/moss0134/Google Drive/Research/SexDiffMedullo/Healthy Brain /GSE15745/GSE15745.top.table.CRBLM_M-F_withCHR.tsv"
+brain2DMP <- "/Users/moss0134/Google Drive/Research/SexDiffMedullo/Analysis_RMM_new/Results/tables/CBL_Ctrl__GSE134379_MethFullResults.csv"
+cavDEG <- "/Users/moss0134/Library/CloudStorage/GoogleDrive-moss0134@umn.edu/.shortcut-targets-by-id/1Ltbi_PE2R7tMPSb5iRZtW_rWMcXE84zl/Medulloblastoma\ Sex\ Differences\ /Natali\ -\ Archive/Natali\ -\ Gene\ Expression\ Top\ Tables"
 
 # File paths to the DMP files for each subgroup
-cavALL_path <- file.path(cavDMPDir, "Cavalli_agecatadj_dmp_MethFullResults.csv")
+cavALL_path <- file.path(cavDMPDir, "Cavalli_agecat_subgroup_adj_dmp_MethFullResults.csv")
 cavSHH_path <- file.path(cavDMPDir, "Cavalli_SHH_ageacatadj_dmp_MethFullResults.csv")
 cavWNT_path <- file.path(cavDMPDir, "Cavalli_WNT_ageacatadj_dmp_MethFullResults.csv")
 cavG3_path <- file.path(cavDMPDir, "Cavalli_Group3_ageacatadj_dmp_MethFullResults.csv")
 cavG4_path <- file.path(cavDMPDir, "Cavalli_Group4_ageacatadj_dmp_MethFullResults.csv")
-newALL_path <- file.path(newDMPDir, "Newcastle_agecatadj_dmp_MethFullResults.csv")
+newALL_path <- file.path(newDMPDir, "Newcastle_agecat_subgroup_adj_dmp_MethFullResults.csv")
 newSHH_path <- file.path(newDMPDir, "Newcastle_SHH_ageacatadj_dmp_MethFullResults.csv")
 newWNT_path <- file.path(newDMPDir, "Newcastle_WNT_ageacatadj_dmp_MethFullResults.csv")
 newG3_path <- file.path(newDMPDir, "Newcastle_Group3_ageacatadj_dmp_MethFullResults.csv")
 newG4_path <- file.path(newDMPDir, "Newcastle_Group4_ageacatadj_dmp_MethFullResults.csv")
+
+#File paths to all the top table files for differential expression done by Natali - /Volumes/GoogleDrive/.shortcut-targets-by-id/1Ltbi_PE2R7tMPSb5iRZtW_rWMcXE84zl/Medulloblastoma\ Sex\ Differences\ /Natali\ -\ Archive/Natali\ -\ Gene\ Expression\ Top\ Tables
+DEG_ALL <- file.path(cavDEG, "diffExp_M-F_ALLnoSexChr.xlsx")
+DEG_SHH <- file.path(cavDEG, "diffExp_M-F_SHHnoSexChr.xlsx")
+DEG_WNT <- file.path(cavDEG, "diffExp_M-F_WNTnoSexChr.xlsx")
+DEG_G3 <- file.path(cavDEG, "diffExp_M-F_G3noSexChr.xlsx")
+DEG_G4 <- file.path(cavDEG, "diffExp_M-F_G4noSexChr.xlsx")
+
+
 
 # # Set the directory where the counts files are found
 # counts_dir <- here::here("analyses", "mutation_counts")
@@ -106,6 +119,7 @@ newWNT <- read_csv(newWNT_path)
 newG3 <- read_csv(newG3_path)
 newG4 <- read_csv(newG4_path)
 brain <- read_tsv(brainDMP)
+brain2 <- read_csv(brain2DMP)
 
 cavALL <- cavALL %>% separate_rows(UCSC_RefGene_Name) %>% distinct()
 cavSHH <- cavSHH %>% separate_rows(UCSC_RefGene_Name) %>% distinct()
@@ -133,20 +147,78 @@ brain_adj <- filter(brain, adj.P.Val<0.05)
 brain_L <- unique(brain_adj$Gene.symbol)
 
 brain_Lt <- data.frame("symbol"=brain_L,"brain"=1)
+cALL_Lt <- data.frame("symbol"=cALL_L, "Cav All" = 1)
 cSHH_Lt <- data.frame("symbol"=cSHH_L,"Cav SHH"=1)
 cWNT_Lt <- data.frame("symbol"=cWNT_L,"Cav WNT"=1)
 cG3_Lt <- data.frame("symbol"=cG3_L,"Cav Group3"=1)
 cG4_Lt <- data.frame("symbol"=cG4_L,"Cav Group4"=1)
+nALL_Lt <- data.frame("symbol"=nALL_L, "New All"=1)
 nSHH_Lt <- data.frame("symbol"=nSHH_L,"New SHH"=1)
 nWNT_Lt <- data.frame("symbol"=nWNT_L,"New WNT"=1)
 nG3_Lt <- data.frame("symbol"=nG3_L,"New Group3"=1)
 nG4_Lt <- data.frame("symbol"=nG4_L,"New Group4"=1)
 
 listI <- list(brain_Lt,cSHH_Lt,cWNT_Lt,cG3_Lt,cG4_Lt,nSHH_Lt,nWNT_Lt,nG3_Lt,nG4_Lt) %>% purrr::reduce(full_join, by = "symbol")
+
 # remove NA gene found in the brain data
 listI <- listI[-6,]
 # replace all NAs with 0 in the table
 listI[is.na(listI)] <- 0
+
+
+
+ListO <- list(cALL_Lt, cSHH_Lt,cWNT_Lt,cG3_Lt,cG4_Lt,nALL_Lt,nSHH_Lt,nWNT_Lt,nG3_Lt,nG4_Lt) %>% purrr::reduce(full_join, by = "symbol")
+# replace all NAs with 0 in the table
+ListO[is.na(ListO)] <- 0
+
+brain_p <- brain2$probeID
+cavALL_p <- cavALL$probeID
+cavSHH_p <- cavSHH$probeID
+cavWNT_p <- cavWNT$probeID
+cavG3_p <- cavG3$probeID
+cavG4_p <- cavG4$probeID
+newALL_p <- newALL$probeID
+newSHH_p <- newSHH$probeID
+newWNT_p <- newWNT$probeID
+newG3_p <- newG3$probeID
+newG4_p <- newG4$probeID
+
+brain_pt <- data.frame("probe"=brain_p,"brain"=1)
+cALL_pt <- data.frame("probe"=cavALL_p, "Cav All" = 1)
+cSHH_pt <-  data.frame("probe"=cavSHH_p, "Cav SHH" = 1)
+cWNT_pt <- data.frame("probe"=cavWNT_p, "Cav WNT" = 1)
+cG3_pt <-  data.frame("probe"=cavG3_p, "Cav G3" = 1)
+cG4_pt <-  data.frame("probe"=cavG4_p, "Cav G4" = 1)
+nALL_pt <- data.frame("probe"=newALL_p, "New All" = 1)
+nSHH_pt <-  data.frame("probe"=newSHH_p, "New SHH" = 1)
+nWNT_pt <- data.frame("probe"=newWNT_p, "New WNT" = 1)
+nG3_pt <-  data.frame("probe"=newG3_p, "New G3" = 1)
+nG4_pt <-  data.frame("probe"=newG4_p, "New G4" = 1)
+
+
+listI2 <- list(cSHH_pt,cWNT_pt,cG3_pt,cG4_pt) %>% purrr::reduce(full_join, by = "probe")
+
+# replace all NAs with 0 in the table
+listI2[is.na(listI2)] <- 0
+
+cDEG_ALL <- read.xlsx(DEG_ALL,1)
+cDEG_ALL <- filter(cDEG_ALL, adj.P.Val<0.05)
+cDEG_SHH <- read.xlsx(DEG_SHH,1)
+cDEG_SHH <- filter(cDEG_SHH, adj.P.Val<0.05)
+cDEG_WNT <- read.xlsx(DEG_WNT,1)
+cDEG_WNT <- filter(cDEG_WNT, adj.P.Val<0.05)
+cDEG_G3 <- read.xlsx(DEG_G3,1)
+cDEG_G3 <- filter(cDEG_G3, adj.P.Val<0.05)
+cDEG_G4 <- read.xlsx(DEG_G4,1)
+cDEG_G4 <- filter(cDEG_G4, adj.P.Val<0.05)
+
+cALL_DEG <- data.frame("symbol"=cDEG_ALL$symbol, "DEG All" = 1)
+cSHH_DEG <- data.frame("symbol"=cDEG_SHH$symbol,"DEG SHH"=1)
+cWNT_DEG <- data.frame("symbol"=cDEG_WNT$symbol,"DEG WNT"=1)
+cG3_DEG <- data.frame("symbol"=cDEG_G3$symbol,"DEG Group3"=1)
+cG4_DEG <- data.frame("symbol"=cDEG_G4$symbol,"DEG Group4"=1)
+
+listDEG <- list(cALL_DEG,cSHH_DEG,cWNT_DEG,cG3_DEG,cG4_DEG) %>% purrr::reduce(full_join, by = "symbol")
 
 ```
 
@@ -161,10 +233,57 @@ p1 <- upset(fromList(listInput1), sets=c("Newcastle Group4","Cavalli Group4","Ne
 p1
 
 p2 <- upset(fromList(listInput2), sets=c("Newcastle Group4","Cavalli Group4","Newcastle Group3","Cavalli Group3","Newcastle WNT","Cavalli WNT","Newcastle SHH","Cavalli SHH", "Newcastle ALL","Cavalli ALL","Healthy Brain"), order.by="degree", keep.order=TRUE)
+p2
 
+listInput1a <- list("Cavalli SHH" = cSHH_L, "Cavalli WNT" = cWNT_L, "Cavalli Group3" = cG3_L, "Cavalli Group4" = cG4_L)
+
+p1a <- upset(fromList(listInput1a), sets=c("Cavalli Group4","Cavalli Group3","Cavalli WNT","Cavalli SHH"), order.by="degree", keep.order=TRUE, mb.ratio = c(0.55, 0.45),text.scale = c(1.3, 1.3, 1, 1, 2, 1.3))
+p1a
 
 ```
 
+Since the second set of brain data was 450K, this time I will match by probeID.
+```{r upset450k, out.width="100%"}
+listInput3 <- list("Healthy Brain" = brain_p, "Cavalli SHH" = cavSHH_p, "Cavalli WNT" = cavWNT_p, "Cavalli Group3" = cavG3_p, "Cavalli Group4" = cavG4_p, "Newcastle SHH" = newSHH_p, "Newcastle WNT" = newWNT_p, "Newcastle Group3" = newG3_p, "Newcastle Group4" = newG4_p)
+
+listInput4 <- list("Healthy Brain" = brain_p, "Cavalli ALL" = cavALL_p, "Cavalli SHH" = cavSHH_p, "Cavalli WNT" = cavWNT_p, "Cavalli Group3" = cavG3_p, "Cavalli Group4" = cavG4_p, "Newcastle ALL" = newALL_p, "Newcastle SHH" = newSHH_p, "Newcastle WNT" = newWNT_p, "Newcastle Group3" = newG3_p, "Newcastle Group4" = newG4_p)
+
+listInput5 <- list("Healthy Brain" = brain_p, "Cavalli SHH" = cavSHH_p, "Cavalli WNT" = cavWNT_p, "Cavalli Group3" = cavG3_p, "Cavalli Group4" = cavG4_p)
+
+p3 <- upset(fromList(listInput3), sets=c("Newcastle Group4","Cavalli Group4","Newcastle Group3","Cavalli Group3","Newcastle WNT","Cavalli WNT","Newcastle SHH","Cavalli SHH", "Healthy Brain"), order.by="degree", keep.order=TRUE, mb.ratio = c(0.55, 0.45),text.scale = c(1.3, 1.3, 1, 1, 2, 1.3))
+p3
+
+p4 <- upset(fromList(listInput4), sets=c("Newcastle Group4","Cavalli Group4","Newcastle Group3","Cavalli Group3","Newcastle WNT","Cavalli WNT","Newcastle SHH","Cavalli SHH", "Newcastle ALL","Cavalli ALL","Healthy Brain"), order.by="degree", keep.order=TRUE)
+p4
+
+p5 <- upset(fromList(listInput5), sets=c("Cavalli Group4","Cavalli Group3","Cavalli WNT","Cavalli SHH","Healthy Brain"), order.by="degree", keep.order=TRUE)
+p5
+
+
+subgroups <- c("SHH","WNT","G3","G4")
+
+uniqueGenes <- function(sub,dir,dmps,brain) {
+  unique <- filter(dmps, !(probeID %in% brain$probeID))
+  genes <- as.data.frame(unique$UCSC_RefGene_Name)
+  colnames(genes) <- c(paste0(sub,"_tumorUniqueDMP_genes"))
+  #write_csv(genes, paste0(dir,"/",sub,"_tumorUnique_DMPgenes.csv"))
+}
+
+lapply(subgroups, uniqueGenes(results_dir))
+
+
+for (sub in subgroups){
+  unique <- filter(get(paste0("cav",sub)), !(probeID %in% brain2$probeID))
+  genes <- as.data.frame(unique$UCSC_RefGene_Name)
+  colnames(genes) <- c(paste0("#Cavalli",sub,"_tumorUniqueDMP_genes"))
+  #write_csv(genes, paste0(results_dir,"/Cavalli_",sub,"_tumorUnique_DMPgenes.csv"))
+}
+uSHH <- filter(cavSHH, !(probeID %in% brain2$probeID))
+uSHH_g <- as.data.frame(uSHH$UCSC_RefGene_Name)
+colnames(uSHH_g) <- c("#Cavalli_SHH_tumorUniqueDMP_genes")
+#write_csv(uSHH_g, paste0(results_dir,"/SHH_tumorunique_DMPgenes.csv"))
+
+```
 
 ### Print all intersections
 
@@ -210,6 +329,15 @@ get_intersect_members <- function (x, ...){
 }
 
 ```
+## Compare DEG to DMPs to see if any match
+
+We want to understand if the DMPs we found are actually expressed
+
+```{r compareDEG}
+phenoDir <- "/Users/moss0134/Google Drive/Research/SexDiffMedullo/Analysis_RMM_new/data/"
+phenoCav <- read_csv(paste0(phenoDir,"/pheno_CavalliCombined_subgrouped.csv"))
+
+```
 
 
 ### Saving plots
@@ -229,11 +357,6 @@ get_intersect_members <- function (x, ...){
 
 
 ## Session information
-
-We like to end all of our notebooks with a call to a function that provides a brief report about the versions of R and all packages that were used in the notebook.
-This can be very useful for debugging down the line, as different versions of packages, R, or even the operating system can sometimes result in slightly or significantly differen outputs.
-
-The most common such function is `sessionInfo()`, which is part of base R and is what we are using here, but a nice alternative is the function `sessioninfo::session_info()` (part of the `sessioninfo` package), which provides a somewhat more neatly-formatted report with a bit more information.
 
 ```{r session_info}
 sessionInfo()

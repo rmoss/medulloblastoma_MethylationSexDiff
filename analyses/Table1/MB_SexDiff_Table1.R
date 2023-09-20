@@ -4,8 +4,12 @@ library(dplyr)
 library(table1)
 library(boot)
 
-pheno <- read_csv("./data/pheno_combined.csv")
+#### Data directory
+dir <- "/Users/moss0134/Library/CloudStorage/GoogleDrive-moss0134@umn.edu/My\ Drive/Research/SexDiffMedullo/Analysis_RMM_new/data/"
 
+# pheno <- read_csv(paste0(dir,"pheno_combined.csv"))
+
+pheno <- read_csv(paste0(dir,"pheno_CavalliCombined_subgrouped.csv"))
 pheno <- pheno %>%
   select(1:51) %>%
   mutate(
@@ -18,6 +22,16 @@ pheno <- pheno %>%
       TRUE ~ NA_real_
     )
   )
+
+phenoF <- pheno[,c(2,15,24,3,52,5,12,13,21,8:10)]
+colnames(phenoF) <- c("sample","geo_accession","description","age","agecat","sex","subgroup","subtype","type","Histology","Metastatic Disease","Vital Status")
+phenoF$sex <- 
+  factor(phenoF$sex, 
+         levels=c("Female","Male"),
+         labels=c("F", # Reference
+                  "M"))
+
+write_csv(phenoF, file=paste0(dir,"pheno_CavalliCombined_subgroupandtype_filtered.csv"))
 
 tab1 <- CreateTableOne(data = pheno,
                vars = c("predictedSex", "agecat","histology","Met.status..1.Met..0.M0", "Dead", "", "dibpat", "height"),
